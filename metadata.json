@@ -1,7 +1,7 @@
 {
-  "name": "Icon Fix",
-  "description": "Automatically fixes broken application icon associations by detecting window/desktop mismatches and patching .desktop files with the correct StartupWMClass.",
-  "uuid": "icon-fix@gnome-extension",
+  "name": "Icon Matcher",
+  "description": "",
+  "uuid": "icon-matcher@gnome-extension",
   "version": 1,
   "shell-version": ["45", "46", "47", "48","49"],
   "url": ""
