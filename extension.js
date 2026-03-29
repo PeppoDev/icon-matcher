@@ -1,411 +1,352 @@
-/**
- * Icon Fix — GNOME Shell Extension
- *
- * Detects windows whose icon association is broken (no valid .desktop match)
- * and creates a corrected .desktop file in ~/.local/share/applications/ with
- * the right StartupWMClass so future launches resolve correctly.
- *
- * Compatible with GNOME Shell 45+ (ES module format).
- */
+import GLib from "gi://GLib";
+import Gio from "gi://Gio";
+import Shell from "gi://Shell";
+import Meta from "gi://Meta";
 
-import GLib from 'gi://GLib';
-import Gio from 'gi://Gio';
-import Shell from 'gi://Shell';
-import Meta from 'gi://Meta';
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-/** Directory where user-level .desktop files live. */
+// Constants
 const USER_APP_DIR = `${GLib.get_home_dir()}/.local/share/applications`;
-
-
-const FEATURE_TOGGLE = {}
-
-/** Prefix added to auto-generated .desktop files to avoid collisions. */
-const FIX_PREFIX = 'iconfix-';
-
-/**
- * Minimum heuristic score (0–100) required before we trust a candidate match.
- * Raise this value to be more conservative; lower it to be more aggressive.
- */
+const MATCHED_DIR = `${USER_APP_DIR}/icons-matched`;
 const MIN_MATCH_SCORE = 50;
-
-/** How long to wait (ms) after a window is created before inspecting it.
- *  Wayland apps often set wm_class / gtk_application_id with a short delay. */
 const WINDOW_INSPECT_DELAY_MS = 600;
 
-// ─── Extension class ──────────────────────────────────────────────────────────
-
 export default class IconFixExtension {
+  enable() {
+    log("[IconMatcher] Extension enabled");
 
-    // ── Lifecycle ──────────────────────────────────────────────────────────────
+    this._processed = new Set();
+    this._pendingConnections = new Map();
 
-    enable() {
-        log('[IconFix] Extension enabled');
+    this._displayConnectionId = global.display.connect(
+      "window-created",
+      (_display, win) => this._scheduleInspection(win),
+    );
 
-        /**
-         * Set of wmClass values we have already processed this session so we
-         * don't re-create .desktop files on every focus-change or repeated signal.
-         * @type {Set<string>}
-         */
-        this._processed = new Set();
+    this._inspectExistingWindows();
+  }
 
-        /**
-         * Map from MetaWindow → signal-connection-id so we can disconnect on
-         * disable without leaking resources.
-         * @type {Map<Meta.Window, number>}
-         */
-        this._pendingConnections = new Map();
+  disable() {
+    log("[IconMatcher] Extension disabled");
 
-        /** Connection id for the global display 'window-created' signal. */
-        this._displayConnectionId = globalThis.display.connect(
-            'window-created',
-            (_display, win) => this._scheduleInspection(win)
+    if (this._displayConnectionId) {
+      global.display.disconnect(this._displayConnectionId);
+      this._displayConnectionId = null;
+    }
+
+    for (const [win, id] of this._pendingConnections) {
+      try {
+        win.disconnect(id);
+      } catch (err) {
+        logError(err, "[IconMatcher] window desconnection failed");
+      }
+    }
+    this._pendingConnections.clear();
+    this._processed.clear();
+  }
+
+  _inspectExistingWindows() {
+    for (const actor of global.get_window_actors()) {
+      const win = actor.get_meta_window();
+      if (win) this._scheduleInspection(win);
+    }
+  }
+
+  _scheduleInspection(win) {
+    const type = win.get_window_type();
+    if (
+      type !== Meta.WindowType.NORMAL &&
+      type !== Meta.WindowType.DIALOG &&
+      type !== Meta.WindowType.MODAL_DIALOG
+    ) {
+      return;
+    }
+
+    GLib.timeout_add(
+      GLib.PRIORITY_DEFAULT_IDLE,
+      WINDOW_INSPECT_DELAY_MS,
+      () => {
+        this._inspectWindow(win);
+        return GLib.SOURCE_REMOVE;
+      },
+    );
+  }
+
+  _inspectWindow(win) {
+    try {
+      const title = win.get_title();
+
+      const tracker = Shell.WindowTracker.get_default();
+      const currentApp = tracker.get_window_app(win);
+
+      if (this._isValidApp(currentApp)) {
+        return;
+      }
+
+      const wmClass = win.get_wm_class() ?? "";
+      const appId = win.get_gtk_application_id() ?? "";
+
+      if (!wmClass && !appId) {
+        log(
+          `[IconMatcher] ✗ "${title ?? "(no title)"}" is untracked and has no identifiers — skipping`,
         );
+        return;
+      }
 
-        // Process windows that are already open when the extension is loaded.
-        this._inspectExistingWindows();
+      // Avoid reprocessing
+      const dedupeKey = wmClass || appId;
+      if (this._processed.has(dedupeKey)) return;
+
+      log(
+        `[IconMatcher] ✗ "${title}" is untracked (wm_class="${wmClass}", app_id="${appId}")`,
+      );
+
+      const candidate = this._findBestCandidate(wmClass, appId, title);
+      if (candidate) {
+        log(
+          `[IconMatcher] -> Best candidate: ${candidate.get_id()} — applying fix`,
+        );
+        this._applyPersistentFix(wmClass, candidate);
+      } else {
+        log(`[IconMatcher] -> No candidate found — cannot fix automatically`);
+      }
+
+      this._processed.add(dedupeKey);
+    } catch (err) {
+      logError(err, "[IconMatcher] _inspectWindow failed");
+    }
+  }
+
+  _isValidApp(app) {
+    if (!app) return false;
+
+    const id = app.get_id();
+    if (!id) return false;
+    if (id.startsWith("window:")) return false;
+
+    return true;
+  }
+
+  _findBestCandidate(wmClass = "", appId = "", title = "") {
+    const appSystem = Shell.AppSystem.get_default();
+
+    log(
+      `[IconMatcher] -> Finding best candidate for "${wmClass}" and "${title} and "${appId}""`,
+    );
+
+    const wmLower = wmClass.toLowerCase().trim();
+    const appLower = appId.toLowerCase().trim();
+    const titleLower = title.trim().toLowerCase();
+
+    if (title) {
+      for (const id of [title, `${title}.desktop`, `${titleLower}.desktop`]) {
+        const app = appSystem.lookup_app(id);
+        if (app) {
+          log(`[IconMatcher]   match via title lookup: ${app.get_id()}`);
+          return app;
+        }
+      }
     }
 
-    disable() {
-        log('[IconFix] Extension disabled');
-
-        if (this._displayConnectionId) {
-            global.display.disconnect(this._displayConnectionId);
-            this._displayConnectionId = null;
+    if (appId) {
+      for (const id of [appId, `${appId}.desktop`, `${appLower}.desktop`]) {
+        const app = appSystem.lookup_app(id);
+        if (app) {
+          log(`[IconMatcher]   match via appId lookup: ${app.get_id()}`);
+          return app;
         }
-
-        // Disconnect any pending per-window signals.
-        for (const [win, id] of this._pendingConnections) {
-            try { win.disconnect(id); } catch (_) { /* window may be gone */ }
-        }
-        this._pendingConnections.clear();
-        this._processed.clear();
+      }
     }
 
-    // ── Window discovery ───────────────────────────────────────────────────────
-
-    /** Inspect every window that is already open when the extension loads. */
-    _inspectExistingWindows() {
-        for (const actor of global.get_window_actors()) {
-            const win = actor.get_meta_window();
-            if (win) this._scheduleInspection(win);
+    if (wmClass) {
+      for (const id of [`${wmClass}.desktop`, `${wmLower}.desktop`]) {
+        const app = appSystem.lookup_app(id);
+        if (app) {
+          log(`[IconMatcher]   match via wmClass lookup: ${app.get_id()}`);
+          return app;
         }
+      }
     }
 
-    /**
-     * Schedule a deferred inspection for a newly created (or existing) window.
-     *
-     * We delay because:
-     *  - Wayland apps set `gtk_application_id` asynchronously.
-     *  - XWayland apps may not have wm_class ready on the first tick.
-     */
-    _scheduleInspection(win) {
-        // Bail early if the window type will never have a useful app entry.
-        const type = win.get_window_type();
-        if (type !== Meta.WindowType.NORMAL &&
-            type !== Meta.WindowType.DIALOG &&
-            type !== Meta.WindowType.MODAL_DIALOG) {
-            return;
-        }
+    // Heuristic matching
+    let bestApp = null;
+    let bestScore = 0;
 
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT_IDLE, WINDOW_INSPECT_DELAY_MS, () => {
-            this._inspectWindow(win);
-            return GLib.SOURCE_REMOVE;
-        });
+    for (const app of appSystem.get_installed()) {
+      const info = Gio.DesktopAppInfo.new(app.get_id());
+      if (!info) continue;
+
+      const score = this._scoreCandidate(app, wmLower, appLower, titleLower);
+      if (score > bestScore) {
+        bestScore = score;
+        bestApp = app;
+      }
     }
 
-    // ── Core inspection logic ──────────────────────────────────────────────────
-
-    /**
-     * Inspect a single window and attempt to fix its icon association if broken.
-     * @param {Meta.Window} win
-     */
-    _inspectWindow(win) {
-        try {
-            const title = win.get_title() ?? '(no title)';
-
-            // ── 1. Ask the tracker first — cheapest check, no string work needed.
-            const tracker    = Shell.WindowTracker.get_default();
-            const currentApp = tracker.get_window_app(win);
-
-            if (this._isValidApp(currentApp)) {
-                // Already matched correctly — nothing to do.
-                return;
-            }
-
-            // ── 2. Tracker failed. Read identifiers only now.
-            const wmClass = win.get_wm_class() ?? '';
-            const appId   = win.get_gtk_application_id() ?? '';
-
-            // ── 3. No identifiers at all (e.g. vkcube) — nothing we can match against.
-            if (!wmClass && !appId) {
-                log(`[IconFix] ✗ "${title}" is untracked and has no identifiers — skipping`);
-                return;
-            }
-
-            // ── 4. De-duplicate so we don't re-run for every new window of the same app.
-            const dedupeKey = wmClass || appId;
-            if (this._processed.has(dedupeKey)) return;
-
-            log(`[IconFix] ✗ "${title}" is untracked (wm_class="${wmClass}", app_id="${appId}")`);
-
-            // ── 5. Try to find a matching .desktop entry.
-            const candidate = this._findBestCandidate(wmClass, appId);
-            if (candidate) {
-                log(`[IconFix] ↳ Best candidate: ${candidate.get_id()} — applying fix`);
-                this._applyPersistentFix(wmClass, appId, candidate);
-            } else {
-                log(`[IconFix] ↳ No candidate found — cannot fix automatically`);
-            }
-
-            // Mark as processed regardless so we don't retry on every new window.
-            this._processed.add(dedupeKey);
-        } catch (err) {
-            logError(err, '[IconFix] _inspectWindow failed');
-        }
+    if (bestScore >= MIN_MATCH_SCORE) {
+      log(
+        `[IconMatcher]   heuristic match (score=${bestScore}): ${bestApp.get_id()}`,
+      );
+      return bestApp;
     }
 
-    /**
-     * Return true when `app` is a real, resolved application (not a fallback
-     * "window:" pseudo-app that GNOME creates for unmatched windows).
-     * @param {Shell.App|null} app
-     */
-    _isValidApp(app) {
-        if (!app) return false;
-        const id = app.get_id();
-        if (!id) return false;
-        // GNOME creates synthetic ids like "window:12345" for unmatched windows.
-        if (id.startsWith('window:')) return false;
-        return true;
+    return null;
+  }
+
+  _scoreCandidate(app, wm, appId, title) {
+    const desktopId = (app.get_id() ?? "")
+      .toLowerCase()
+      .replace(/\.desktop$/, "");
+    const appName = (app.get_name() ?? "").toLowerCase();
+
+    const shortDesktopId = desktopId.split(".").pop();
+
+    // Prevent sub process ex: steam_app_1234 being matched to steam.desktop
+    if (
+      wm &&
+      (wm.startsWith(`${desktopId}_`) ||
+        wm.startsWith(`${shortDesktopId}_`) ||
+        wm.startsWith(`${desktopId}-`) ||
+        wm.startsWith(`${shortDesktopId}-`))
+    )
+      return 0;
+
+    let score = 0;
+
+    if (wm) {
+      if (desktopId === wm) score = Math.max(score, 95);
+      if (desktopId.includes(wm) && wm.length > 3) score = Math.max(score, 80);
+      if (wm.includes(desktopId) && desktopId.length > 3)
+        score = Math.max(score, 70);
+      if (
+        shortDesktopId &&
+        wm.includes(shortDesktopId) &&
+        shortDesktopId.length > 3
+      )
+        score = Math.max(score, 65);
+      if (appName === wm) score = Math.max(score, 85);
+      if (appName.includes(wm) && wm.length > 3) score = Math.max(score, 60);
+      if (wm.includes(appName) && appName.length > 3)
+        score = Math.max(score, 55);
     }
 
-    // ── Candidate matching ─────────────────────────────────────────────────────
-
-    /**
-     * Search through all installed apps to find the best match for this window.
-     *
-     * Strategy (ordered by priority):
-     *  1. Exact lookup by `appId` (with and without `.desktop` suffix).
-     *  2. Exact lookup by `wmClass` as a desktop file name.
-     *  3. Exact match on `StartupWMClass` field.
-     *  4. Heuristic substring / partial match scored 0–100.
-     *
-     * @param {string} wmClass
-     * @param {string} appId
-     * @returns {Shell.App|null}
-     */
-    _findBestCandidate(wmClass, appId) {
-        const appSystem = Shell.AppSystem.get_default();
-
-        // ── 1. Direct appId lookup ─────────────────────────────────────────────
-        if (appId) {
-            for (const id of [appId, `${appId}.desktop`]) {
-                const app = appSystem.lookup_app(id);
-                if (app) {
-                    log(`[IconFix]   match via appId lookup: ${app.get_id()}`);
-                    return app;
-                }
-            }
-        }
-
-        // ── 2. Direct wmClass lookup ───────────────────────────────────────────
-        if (wmClass) {
-            for (const id of [
-                `${wmClass}.desktop`,
-                `${wmClass.toLowerCase()}.desktop`,
-            ]) {
-                const app = appSystem.lookup_app(id);
-                if (app) {
-                    log(`[IconFix]   match via wmClass lookup: ${app.get_id()}`);
-                    return app;
-                }
-            }
-        }
-
-        // ── 3 & 4. Scan all installed apps ─────────────────────────────────────
-        const wmLower  = wmClass.toLowerCase();
-        const appLower = appId.toLowerCase();
-
-        let bestApp   = null;
-        let bestScore = 0;
-
-        for (const app of appSystem.get_installed()) {
-            const info = app.get_app_info();
-            if (!info) continue;
-
-            // 3. StartupWMClass exact match — highest confidence, return immediately.
-            const startupWMClass = info.get_string('StartupWMClass');
-            if (startupWMClass && wmClass &&
-                startupWMClass.toLowerCase() === wmLower) {
-                log(`[IconFix]   match via StartupWMClass: ${app.get_id()}`);
-                return app;
-            }
-
-            const score = this._scoreCandidate(app, wmLower, appLower);
-            if (score > bestScore) {
-                bestScore = score;
-                bestApp   = app;
-            }
-        }
-
-        if (bestScore >= MIN_MATCH_SCORE) {
-            log(`[IconFix]   heuristic match (score=${bestScore}): ${bestApp.get_id()}`);
-            return bestApp;
-        }
-
-        return null;
+    if (appId) {
+      if (desktopId === appId) score = Math.max(score, 90);
+      if (desktopId.includes(appId) && appId.length > 3)
+        score = Math.max(score, 75);
     }
 
-    /**
-     * Compute a heuristic similarity score (0–100) between an installed app
-     * and the window identifiers.
-     *
-     * @param {Shell.App} app
-     * @param {string} wmLower   — lower-cased wm_class
-     * @param {string} appLower  — lower-cased gtk_application_id
-     * @returns {number}
-     */
-    _scoreCandidate(app, wmLower, appLower) {
-        const desktopId  = (app.get_id() ?? '').toLowerCase().replace(/\.desktop$/, '');
-        const appName    = (app.get_name() ?? '').toLowerCase();
+    const titleNormalized = this._normalize(title);
+    const desktopNormalized = this._normalize(desktopId);
+    const appNameNormalized = this._normalize(appName);
+    const shortIdNormalized = this._normalize(shortDesktopId);
 
-        // Extract the short name from a reverse-DNS id like "org.mozilla.Firefox"
-        const reverseDnsParts = desktopId.split('.');
-        const shortId = reverseDnsParts[reverseDnsParts.length - 1];
+    if (titleNormalized && titleNormalized.length > 3) {
+      if (titleNormalized === desktopNormalized) score = Math.max(score, 98);
+      if (titleNormalized === appNameNormalized) score = Math.max(score, 95);
+      if (titleNormalized === shortIdNormalized) score = Math.max(score, 93);
 
-        let score = 0;
-
-        // wm_class ↔ desktop-id comparisons
-        if (wmLower && desktopId === wmLower)                        score = Math.max(score, 95);
-        if (wmLower && desktopId.includes(wmLower))                  score = Math.max(score, 80);
-        if (wmLower && wmLower.includes(desktopId) && desktopId.length > 3)
-                                                                     score = Math.max(score, 70);
-        if (wmLower && shortId && wmLower.includes(shortId) && shortId.length > 3)
-                                                                     score = Math.max(score, 65);
-
-        // wm_class ↔ app name comparisons
-        if (wmLower && appName === wmLower)                          score = Math.max(score, 85);
-        if (wmLower && appName.includes(wmLower))                    score = Math.max(score, 60);
-        if (wmLower && wmLower.includes(appName) && appName.length > 3)
-                                                                     score = Math.max(score, 55);
-
-        // gtk_application_id ↔ desktop-id comparisons
-        if (appLower && desktopId === appLower)                      score = Math.max(score, 90);
-        if (appLower && desktopId.includes(appLower))                score = Math.max(score, 75);
-
-        // Partial match on the last segment of reverse-DNS app_id
-        if (appLower) {
-            const appIdShort = appLower.split('.').pop();
-            if (appIdShort && appIdShort.length > 3 && desktopId.includes(appIdShort))
-                                                                     score = Math.max(score, 45);
-        }
-
-        return score;
+      if (appNameNormalized.includes(titleNormalized))
+        score = Math.max(score, 68);
+      if (desktopNormalized.includes(titleNormalized))
+        score = Math.max(score, 65);
     }
 
-    // ── Persistent fix (.desktop patching) ────────────────────────────────────
+    return score;
+  }
 
-    /**
-     * Create a patched copy of the candidate's .desktop file in the user's
-     * application directory with `StartupWMClass` set to `wmClass`.
-     *
-     * If the original already has the correct StartupWMClass we do nothing.
-     * If a fix file already exists on disk we skip creation.
-     *
-     * @param {string}     wmClass
-     * @param {string}     appId
-     * @param {Shell.App}  app
-     */
-    _applyPersistentFix(wmClass, appId, app) {
-        try {
-            const info = app.get_app_info();
-            if (!info) {
-                log('[IconFix] _applyPersistentFix: app has no AppInfo, skipping');
-                return;
-            }
+  _normalize(str) {
+    return str.replace(/[^a-z0-9]/g, "");
+  }
 
-            // Nothing to do if the original already declares the right WMClass.
-            const existingWMClass = info.get_string('StartupWMClass');
-            if (existingWMClass === wmClass) {
-                log(`[IconFix] ${app.get_id()} already has StartupWMClass=${wmClass}`);
-                return;
-            }
+  _applyPersistentFix(wmClass, app) {
+    // TODO: Make it work overriding the original .desktop file
+    try {
+      const info = Gio.DesktopAppInfo.new(app.get_id());
+      if (!info) {
+        log("[IconMatcher] _applyPersistentFix: app has no AppInfo, skipping");
+        return;
+      }
 
-            // Sanitise wmClass for use in a filename (replace problematic chars).
-            const safeKey = (wmClass || appId).replace(/[^a-zA-Z0-9._-]/g, '_');
-            const fixPath = `${USER_APP_DIR}/${FIX_PREFIX}${safeKey}.desktop`;
+      const existingWMClass = info.get_string("StartupWMClass");
+      if (existingWMClass === wmClass) {
+        log(
+          `[IconMatcher] ${app.get_id()} already has StartupWMClass=${wmClass}`,
+        );
+        return;
+      }
 
-            const fixFile = Gio.File.new_for_path(fixPath);
-            if (fixFile.query_exists(null)) {
-                log(`[IconFix] Fix already on disk: ${fixPath}`);
-                return;
-            }
+      // TODO: At least create a option to override instead of creating a new file
+      const fixPath = `${MATCHED_DIR}/${app.get_id()}`;
 
-            // Ensure the destination directory exists.
-            const userAppDir = Gio.File.new_for_path(USER_APP_DIR);
-            if (!userAppDir.query_exists(null)) {
-                userAppDir.make_directory_with_parents(null);
-            }
+      const fixFile = Gio.File.new_for_path(fixPath);
+      if (fixFile.query_exists(null)) {
+        log(`[IconMatcher] Fix already on disk: ${fixPath}`);
+        return;
+      }
 
-            this._writeFixedDesktopFile(info, wmClass, fixPath);
+      const matchedDir = Gio.File.new_for_path(MATCHED_DIR);
+      if (!matchedDir.query_exists(null)) {
+        matchedDir.make_directory_with_parents(null);
+      }
 
-        } catch (err) {
-            logError(err, '[IconFix] _applyPersistentFix failed');
-        }
+      this._writeFixedDesktopFile(info, wmClass, fixPath);
+    } catch (err) {
+      logError(err, "[IconMatcher] _applyPersistentFix failed");
+    }
+  }
+
+  _writeFixedDesktopFile(info, wmClass, outputPath) {
+    const sourceFile = Gio.File.new_for_path(info.get_filename());
+    const [ok, rawBytes] = sourceFile.load_contents(null);
+    if (!ok) {
+      log("[IconMatcher] Could not read source .desktop file");
+      return;
     }
 
-    /**
-     * Read the original .desktop file, patch / inject StartupWMClass, and write
-     * the result to `outputPath`.
-     *
-     * @param {Gio.DesktopAppInfo} info
-     * @param {string} wmClass
-     * @param {string} outputPath
-     */
-    _writeFixedDesktopFile(info, wmClass, outputPath) {
-        const sourceFile = Gio.File.new_for_path(info.get_filename());
-        const [ok, rawBytes] = sourceFile.load_contents(null);
-        if (!ok) {
-            log('[IconFix] Could not read source .desktop file');
-            return;
-        }
+    let content = new TextDecoder("utf-8").decode(rawBytes);
 
-        let content = new TextDecoder('utf-8').decode(rawBytes);
-
-        // Patch or inject the StartupWMClass key inside [Desktop Entry].
-        if (/^StartupWMClass=/m.test(content)) {
-            // Replace existing (possibly wrong) value.
-            content = content.replace(
-                /^StartupWMClass=.*$/m,
-                `StartupWMClass=${wmClass}`
-            );
-        } else {
-            // Inject the key right after the [Desktop Entry] section header.
-            content = content.replace(
-                /^(\[Desktop Entry\]\s*\n)/m,
-                `$1StartupWMClass=${wmClass}\n`
-            );
-        }
-
-        // Prepend a header comment so the file's origin is traceable.
-        const header = [
-            '# Auto-generated by the Icon Fix GNOME Shell extension.',
-            `# Source: ${info.get_filename()}`,
-            `# Added StartupWMClass=${wmClass}`,
-            '',
-        ].join('\n');
-
-        const finalContent = header + content;
-
-        // Write the file atomically via a replace stream.
-        const outFile = Gio.File.new_for_path(outputPath);
-        const stream  = outFile.replace(null, false, Gio.FileCreateFlags.NONE, null);
-        const dos     = Gio.DataOutputStream.new(stream);
-        dos.put_string(finalContent, null);
-        dos.close(null);
-
-        log(`[IconFix] ✔ Wrote fix: ${outputPath}`);
-        log('[IconFix]   Changes take effect after the app is relaunched.');
+    if (/^StartupWMClass=/m.test(content)) {
+      content = content.replace(
+        /^StartupWMClass=.*$/m,
+        `StartupWMClass=${wmClass}`,
+      );
+    } else {
+      content = content.replace(
+        /^(\[Desktop Entry\]\s*\n)/m,
+        `$1StartupWMClass=${wmClass}\n`,
+      );
     }
+
+    // Hid to avoid showing in the app grid or search results
+    if (/^NoDisplay=/m.test(content)) {
+      content = content.replace(/^NoDisplay=.*$/m, "NoDisplay=true");
+    } else {
+      content = content.replace(
+        /^(\[Desktop Entry\]\s*\n)/m,
+        `$1NoDisplay=true\n`,
+      );
+    }
+
+    // Just to make it obvious, remove it later
+    const header = [
+      "# Auto-generated by the Icon Fix GNOME Shell extension.",
+      `# Source: ${info.get_filename()}`,
+      `# Added StartupWMClass=${wmClass}`,
+      "",
+    ].join("\n");
+
+    const finalContent = header + content;
+
+    // Write the file atomically via a replace stream.
+    const outFile = Gio.File.new_for_path(outputPath);
+    const stream = outFile.replace(null, false, Gio.FileCreateFlags.NONE, null);
+    const dos = Gio.DataOutputStream.new(stream);
+    dos.put_string(finalContent, null);
+    dos.close(null);
+
+    log(`[IconMatcher]   Wrote fix: ${outputPath}`);
+    log(
+      "[IconMatcher]   Changes take effect after the app is relaunched or use update-desktop-database ~/.local/share/applications",
+    );
+  }
 }
+
