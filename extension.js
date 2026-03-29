@@ -289,6 +289,7 @@ export default class IconFixExtension {
       }
 
       this._writeFixedDesktopFile(info, wmClass, fixPath);
+      this._updateDesktopDatabase();
     } catch (err) {
       logError(err, "[IconMatcher] _applyPersistentFix failed");
     }
@@ -347,6 +348,26 @@ export default class IconFixExtension {
     log(
       "[IconMatcher]   Changes take effect after the app is relaunched or use update-desktop-database ~/.local/share/applications",
     );
+  }
+
+  _updateDesktopDatabase() {
+    try {
+      const proc = Gio.Subprocess.new(
+        ['update-desktop-database', MATCHED_DIR],
+        Gio.SubprocessFlags.NONE
+      );
+
+      proc.wait_async(null, (_proc, result) => {
+        try {
+          _proc.wait_finish(result);
+          log('[IconMatcher]   update-desktop-database completed — fix is active');
+        } catch (err) {
+          logError(err, '[IconMatcher] update-desktop-database failed');
+        }
+      });
+    } catch (err) {
+      logError(err, '[IconMatcher] Could not launch update-desktop-database');
+    }
   }
 }
 
