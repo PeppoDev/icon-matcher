@@ -4,5 +4,5 @@
   "uuid": "icon-matcher@gnome-extension",
   "version": 1,
   "shell-version": ["48","49"],
-  "url": ""
+  "url": "https://github.com/PeppoDev/icon-matcher"
 }
