@@ -353,7 +353,7 @@ export default class IconFixExtension {
   _updateDesktopDatabase() {
     try {
       const proc = Gio.Subprocess.new(
-        ['update-desktop-database', MATCHED_DIR],
+        ['update-desktop-database', USER_APP_DIR],
         Gio.SubprocessFlags.NONE
       );
 
