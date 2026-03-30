@@ -7,7 +7,12 @@ import Meta from "gi://Meta";
 const USER_APP_DIR = `${GLib.get_home_dir()}/.local/share/applications`;
 const MATCHED_DIR = `${USER_APP_DIR}/icons-matched`;
 const MIN_MATCH_SCORE = 50;
-const WINDOW_INSPECT_DELAY_MS = 600;
+const WINDOW_INSPECT_DELAY_MS = 1000;
+const ALLOWED_WINDOW_TYPES = [
+  Meta.WindowType.NORMAL,
+  Meta.WindowType.DIALOG,
+  Meta.WindowType.MODAL_DIALOG,
+];
 
 export default class IconFixExtension {
   enable() {
@@ -21,7 +26,9 @@ export default class IconFixExtension {
       (_display, win) => this._scheduleInspection(win),
     );
 
-    this._inspectExistingWindows();
+    // TODO: Create a toggle for this
+    // It is impacting on startup performance
+    // this._inspectExistingWindows();
   }
 
   disable() {
@@ -52,11 +59,7 @@ export default class IconFixExtension {
 
   _scheduleInspection(win) {
     const type = win.get_window_type();
-    if (
-      type !== Meta.WindowType.NORMAL &&
-      type !== Meta.WindowType.DIALOG &&
-      type !== Meta.WindowType.MODAL_DIALOG
-    ) {
+    if (!ALLOWED_WINDOW_TYPES.includes(type)) {
       return;
     }
 
@@ -73,6 +76,21 @@ export default class IconFixExtension {
   _inspectWindow(win) {
     try {
       const title = win.get_title();
+
+
+      // TODO: Improve it with a retry system
+      if (!title) {
+        if (!this._pendingConnections.has(win)) {
+          const id = win.connect("notify::title", () => {
+            win.disconnect(id);
+            this._pendingConnections.delete(win);
+            this._inspectWindow(win);
+          });
+          this._pendingConnections.set(win, id);
+          log(`[IconMatcher] window has no title yet, waiting for notify::title`);
+        }
+        return;
+      }
 
       const tracker = Shell.WindowTracker.get_default();
       const currentApp = tracker.get_window_app(win);
@@ -102,11 +120,11 @@ export default class IconFixExtension {
       const candidate = this._findBestCandidate(wmClass, appId, title);
       if (candidate) {
         log(
-          `[IconMatcher] -> Best candidate: ${candidate.get_id()} — applying fix`,
+          `[IconMatcher] 	✔ Best candidate: ${candidate.get_id()} — applying fix`,
         );
         this._applyPersistentFix(wmClass, candidate);
       } else {
-        log(`[IconMatcher] -> No candidate found — cannot fix automatically`);
+        log(`[IconMatcher] -> No candidate found, cannot fix automatically`);
       }
 
       this._processed.add(dedupeKey);
@@ -125,19 +143,13 @@ export default class IconFixExtension {
     return true;
   }
 
-  _findBestCandidate(wmClass = "", appId = "", title = "") {
-    const appSystem = Shell.AppSystem.get_default();
-
-    log(
-      `[IconMatcher] -> Finding best candidate for "${wmClass}" and "${title} and "${appId}""`,
-    );
-
+  _deterministicMatch(appSystem, wmClass, appId, title) {
     const wmLower = wmClass.toLowerCase().trim();
     const appLower = appId.toLowerCase().trim();
-    const titleLower = title.trim().toLowerCase();
+    const titleLower = title.toLowerCase().trim();
 
     if (title) {
-      for (const id of [title, `${title}.desktop`, `${titleLower}.desktop`]) {
+      for (const id of [`${title}.desktop`, `${titleLower}.desktop`]) {
         const app = appSystem.lookup_app(id);
         if (app) {
           log(`[IconMatcher]   match via title lookup: ${app.get_id()}`);
@@ -147,7 +159,7 @@ export default class IconFixExtension {
     }
 
     if (appId) {
-      for (const id of [appId, `${appId}.desktop`, `${appLower}.desktop`]) {
+      for (const id of [`${appId}.desktop`, `${appLower}.desktop`]) {
         const app = appSystem.lookup_app(id);
         if (app) {
           log(`[IconMatcher]   match via appId lookup: ${app.get_id()}`);
@@ -165,16 +177,18 @@ export default class IconFixExtension {
         }
       }
     }
+  }
 
-    // Heuristic matching
+  _heuristichMatch(appSystem, wmClass, appId, title) {
     let bestApp = null;
     let bestScore = 0;
+    const apps = appSystem.get_installed();
 
-    for (const app of appSystem.get_installed()) {
+    for (const app of apps) {
       const info = Gio.DesktopAppInfo.new(app.get_id());
       if (!info) continue;
 
-      const score = this._scoreCandidate(app, wmLower, appLower, titleLower);
+      const score = this._scoreCandidate(app, wmClass, appId, title);
       if (score > bestScore) {
         bestScore = score;
         bestApp = app;
@@ -187,6 +201,33 @@ export default class IconFixExtension {
       );
       return bestApp;
     }
+  }
+
+  _findBestCandidate(wmClass = "", appId = "", title = "") {
+    const appSystem = Shell.AppSystem.get_default();
+
+    log(
+      `[IconMatcher] -> Finding best candidate for "${wmClass}" and "${title} and "${appId}""`,
+    );
+
+    const obviousMatch = this._deterministicMatch(
+      appSystem,
+      wmClass,
+      appId,
+      title,
+    );
+
+    if (obviousMatch) {
+      log(`[IconMatcher] -> Found by deterministic method`);
+      return obviousMatch;
+    }
+
+    const bestMatch = this._heuristichMatch(appSystem, wmClass, appId, title);
+
+    if (bestMatch) {
+      log(`[IconMatcher] -> Found by heuristic method`);
+      return bestMatch;
+    }
 
     return null;
   }
@@ -197,6 +238,7 @@ export default class IconFixExtension {
       .replace(/\.desktop$/, "");
     const appName = (app.get_name() ?? "").toLowerCase();
 
+    // Just in case of dns-like desktopId
     const shortDesktopId = desktopId.split(".").pop();
 
     // Prevent sub process ex: steam_app_1234 being matched to steam.desktop
@@ -211,8 +253,10 @@ export default class IconFixExtension {
 
     let score = 0;
 
+
+    // Metadata match
     if (wm) {
-      if (desktopId === wm) score = Math.max(score, 95);
+      if (desktopId === wm) score = Math.max(score, 93);
       if (desktopId.includes(wm) && wm.length > 3) score = Math.max(score, 80);
       if (wm.includes(desktopId) && desktopId.length > 3)
         score = Math.max(score, 70);
@@ -221,7 +265,7 @@ export default class IconFixExtension {
         wm.includes(shortDesktopId) &&
         shortDesktopId.length > 3
       )
-        score = Math.max(score, 65);
+        score = Math.max(score, 66);
       if (appName === wm) score = Math.max(score, 85);
       if (appName.includes(wm) && wm.length > 3) score = Math.max(score, 60);
       if (wm.includes(appName) && appName.length > 3)
@@ -234,6 +278,9 @@ export default class IconFixExtension {
         score = Math.max(score, 75);
     }
 
+
+    // Window title match, seems to be more effective than the others
+    // Careful about inclusions
     const titleNormalized = this._normalize(title);
     const desktopNormalized = this._normalize(desktopId);
     const appNameNormalized = this._normalize(appName);
@@ -242,19 +289,19 @@ export default class IconFixExtension {
     if (titleNormalized && titleNormalized.length > 3) {
       if (titleNormalized === desktopNormalized) score = Math.max(score, 98);
       if (titleNormalized === appNameNormalized) score = Math.max(score, 95);
-      if (titleNormalized === shortIdNormalized) score = Math.max(score, 93);
+      if (titleNormalized === shortIdNormalized) score = Math.max(score, 94);
 
       if (appNameNormalized.includes(titleNormalized))
-        score = Math.max(score, 68);
-      if (desktopNormalized.includes(titleNormalized))
         score = Math.max(score, 65);
+      if (titleNormalized.includes(desktopNormalized))
+        score = Math.max(score, 68);
     }
 
     return score;
   }
 
   _normalize(str) {
-    return str.replace(/[^a-z0-9]/g, "");
+    return str.toLowerCase().replace(/[^a-z0-9]/g, "");
   }
 
   _applyPersistentFix(wmClass, app) {
@@ -270,6 +317,14 @@ export default class IconFixExtension {
       if (existingWMClass === wmClass) {
         log(
           `[IconMatcher] ${app.get_id()} already has StartupWMClass=${wmClass}`,
+        );
+        return;
+      }
+      const icon = info.get_icon();
+
+      if (!icon) {
+        log(
+          `[IconMatcher] ${app.get_id()} does not have any icon`,
         );
         return;
       }
@@ -317,7 +372,7 @@ export default class IconFixExtension {
       );
     }
 
-    // Hid to avoid showing in the app grid or search results
+    // Hide to avoid showing in the app grid or search results
     if (/^NoDisplay=/m.test(content)) {
       content = content.replace(/^NoDisplay=.*$/m, "NoDisplay=true");
     } else {
@@ -337,7 +392,6 @@ export default class IconFixExtension {
 
     const finalContent = header + content;
 
-    // Write the file atomically via a replace stream.
     const outFile = Gio.File.new_for_path(outputPath);
     const stream = outFile.replace(null, false, Gio.FileCreateFlags.NONE, null);
     const dos = Gio.DataOutputStream.new(stream);
@@ -345,29 +399,27 @@ export default class IconFixExtension {
     dos.close(null);
 
     log(`[IconMatcher]   Wrote fix: ${outputPath}`);
-    log(
-      "[IconMatcher]   Changes take effect after the app is relaunched or use update-desktop-database ~/.local/share/applications",
-    );
   }
 
   _updateDesktopDatabase() {
     try {
       const proc = Gio.Subprocess.new(
-        ['update-desktop-database', USER_APP_DIR],
-        Gio.SubprocessFlags.NONE
+        ["update-desktop-database", USER_APP_DIR],
+        Gio.SubprocessFlags.NONE,
       );
 
       proc.wait_async(null, (_proc, result) => {
         try {
           _proc.wait_finish(result);
-          log('[IconMatcher]   update-desktop-database completed — fix is active');
+          log(
+            "[IconMatcher]   update-desktop-database completed — fix is active",
+          );
         } catch (err) {
-          logError(err, '[IconMatcher] update-desktop-database failed');
+          logError(err, "[IconMatcher] update-desktop-database failed");
         }
       });
     } catch (err) {
-      logError(err, '[IconMatcher] Could not launch update-desktop-database');
+      logError(err, "[IconMatcher] Could not launch update-desktop-database");
     }
   }
 }
-
