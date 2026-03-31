@@ -306,7 +306,6 @@ export default class IconFixExtension {
 
   _applyPersistentFix(wmClass, app) {
     // TODO: Make it work overriding the original .desktop file
-    // TODO: it should be a toggle but its not a must have on the first version
     try {
       const info = Gio.DesktopAppInfo.new(app.get_id());
       if (!info) {
@@ -330,21 +329,12 @@ export default class IconFixExtension {
         return;
       }
 
-      const fixPath = `${MATCHED_DIR}/${app.get_id()}`;
+      const fixPath = `${MATCHED_DIR}/${wmClass}.desktop`;
 
       const fixFile = Gio.File.new_for_path(fixPath);
-      const fileExists = fixFile.query_exists(null);
-
-      
-      if (fileExists) {
-        const fixInfo = Gio.DesktopAppInfo.new_from_filename(fixPath);
-        const fixedWMClass = fixInfo.get_string("StartupWMClass");
-        const isFileFixed = fixedWMClass === wmClass;
-        if (isFileFixed) {
-          log(`[IconMatcher] Fix already on disk with correct StartupWMClass: ${fixPath}`);
-          return;
-        }
-        log(`[IconMatcher] Fix on disk has wrong StartupWMClass="${fixedWMClass}", updating to "${wmClass}"`);
+      if (fixFile.query_exists(null)) {
+        log(`[IconMatcher] Fix already on disk: ${fixPath}`);
+        return;
       }
 
       const matchedDir = Gio.File.new_for_path(MATCHED_DIR);
