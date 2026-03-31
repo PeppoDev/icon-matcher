@@ -77,7 +77,6 @@ export default class IconFixExtension {
     try {
       const title = win.get_title();
 
-
       // TODO: Improve it with a retry system
       if (!title) {
         if (!this._pendingConnections.has(win)) {
@@ -87,7 +86,9 @@ export default class IconFixExtension {
             this._inspectWindow(win);
           });
           this._pendingConnections.set(win, id);
-          log(`[IconMatcher] window has no title yet, waiting for notify::title`);
+          log(
+            `[IconMatcher] window has no title yet, waiting for notify::title`,
+          );
         }
         return;
       }
@@ -122,7 +123,7 @@ export default class IconFixExtension {
         log(
           `[IconMatcher] 	✔ Best candidate: ${candidate.get_id()} — applying fix`,
         );
-        this._applyPersistentFix(wmClass, candidate);
+        this._applyPersistentFix(wmClass, appId, candidate);
       } else {
         log(`[IconMatcher] -> No candidate found, cannot fix automatically`);
       }
@@ -159,7 +160,7 @@ export default class IconFixExtension {
     }
 
     if (appId) {
-      for (const id of [`${appId}.desktop`, `${appLower}.desktop`]) {
+      for (const id of [`${appLower}.desktop`]) {
         const app = appSystem.lookup_app(id);
         if (app) {
           log(`[IconMatcher]   match via appId lookup: ${app.get_id()}`);
@@ -253,7 +254,6 @@ export default class IconFixExtension {
 
     let score = 0;
 
-
     // Metadata match
     if (wm) {
       if (desktopId === wm) score = Math.max(score, 93);
@@ -273,11 +273,9 @@ export default class IconFixExtension {
     }
 
     if (appId) {
-      if (desktopId === appId) score = Math.max(score, 90);
       if (desktopId.includes(appId) && appId.length > 3)
         score = Math.max(score, 75);
     }
-
 
     // Window title match, seems to be more effective than the others
     // Careful about inclusions
@@ -304,12 +302,24 @@ export default class IconFixExtension {
     return str.toLowerCase().replace(/[^a-z0-9]/g, "");
   }
 
-  _applyPersistentFix(wmClass, app) {
+  _applyPersistentFix(wmClass, appId, app) {
     // TODO: Make it work overriding the original .desktop file
     try {
       const info = Gio.DesktopAppInfo.new(app.get_id());
       if (!info) {
         log("[IconMatcher] _applyPersistentFix: app has no AppInfo, skipping");
+        return;
+      }
+
+      // Some guards to avoid mistake, need to improve the isValidApp method
+      const desktopId = app
+        .get_id()
+        .replace(/\.desktop$/, "")
+        .toLowerCase();
+      if (desktopId === appId.toLowerCase()) {
+        log(
+          `[IconMatcher] desktop name "${desktopId}" matches appid, no need for fixing.`,
+        );
         return;
       }
 
@@ -323,9 +333,7 @@ export default class IconFixExtension {
       const icon = info.get_icon();
 
       if (!icon) {
-        log(
-          `[IconMatcher] ${app.get_id()} does not have any icon`,
-        );
+        log(`[IconMatcher] ${app.get_id()} does not have any icon`);
         return;
       }
 
