@@ -62,7 +62,7 @@ This fixes your applications on demand whenever a new window is created without 
 
 ### Did it mess with your desktop entries?
 
-No, the extension by default does not override any desktop entry on your computer. It only creates a new file inside the applications path (~/.local/share/applications/icons-matched) that mirrors the original except for the fixed StartupWMClass. It will also have NoDisplay=true to avoid duplication on app menus. It's important to say that you can delete this folder created by the extension to undo everything if something goes wrong.
+No, the extension by default does not override any desktop entry on your computer. It only creates a new file inside the applications path (`~/.local/share/applications/icons-matched`) that mirrors the original except for the fixed StartupWMClass. It will also have NoDisplay=true to avoid duplication on app menus. It's important to say that you can delete this folder created by the extension to undo everything if something goes wrong.
 
 
 ### Did it impact the computer performance?
