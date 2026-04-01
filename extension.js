@@ -7,8 +7,15 @@ import Meta from "gi://Meta";
 const USER_APP_DIR = `${GLib.get_home_dir()}/.local/share/applications`;
 const MATCHED_DIR = `${USER_APP_DIR}/icons-matched`;
 const MIN_MATCH_SCORE = 50;
-const WINDOW_INSPECT_DELAY_MS = 5000;
-const BLACKLISTED_PREFIXES = ["org.gnome", "gnome-shell", "xdg", "org.mozilla", "teams-for-linux", "google-chrome"];
+const WINDOW_INSPECT_DELAY_MS = 1000;
+const BLACKLISTED_PREFIXES = [
+  "org.gnome",
+  "gnome-shell",
+  "xdg",
+  "org.mozilla",
+  "teams-for-linux",
+  "google-chrome",
+];
 
 export default class IconFixExtension {
   enable() {
@@ -90,9 +97,6 @@ export default class IconFixExtension {
             this._inspectWindow(win);
           });
           this._pendingConnections.set(win, id);
-          // console.log(
-          //   `[IconMatcher] window has no title yet, waiting for notify::title`,
-          // );
         }
         return;
       }
@@ -108,9 +112,17 @@ export default class IconFixExtension {
       const appId = win.get_gtk_application_id() ?? "";
 
       if (!wmClass && !appId) {
-        // console.log(
-        //   `[IconMatcher] ✗ "${title ?? "(no title)"}" is untracked and has no identifiers — skipping`,
-        // );
+        return;
+      }
+
+      // Its not right but probably better than letting it match wrong
+      // It works because it represents an app that was developed with care
+      // and probably it has the correct desktop file
+      if (wmClass.toLowerCase() === appId.toLowerCase()) {
+        console.log(
+          "[IconMatcher] wm_class and app_id are the same, skipping to avoid potential mismatch",
+          wmClass,
+        );
         return;
       }
 
@@ -143,7 +155,6 @@ export default class IconFixExtension {
   // Some apps seems to be null even though they are eventually valid
   // Seems to increase the dealy time works but its not a silver bullet
   _isValidApp(app) {
-
     // Remove this
     console.log("[IconMatcher] _isValidApp", app);
     if (!app) return false;
