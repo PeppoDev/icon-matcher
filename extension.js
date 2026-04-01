@@ -155,15 +155,8 @@ export default class IconFixExtension {
   // Some apps seems to be null even though they are eventually valid
   // Seems to increase the dealy time works but its not a silver bullet
   _isValidApp(app) {
-    // Remove this
-    console.log("[IconMatcher] _isValidApp", app);
     if (!app) return false;
-
     const id = app.get_id();
-
-    // Remove this
-    console.log("[IconMatcher] _isValidApp", id);
-
     if (!id) return false;
     if (id.startsWith("window:")) return false;
 
