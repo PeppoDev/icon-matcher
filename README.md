@@ -71,7 +71,7 @@ I don't think so but it's hard to check how many resources have been spent on th
 
 ### Was it created by AI?
 
-If the question is "Did you use AI?" the answer is yes. But if the question is "Did AI write all the code?" the answer is no. I wrote my own code, the entire heuristic algorithm was created outside a GNOME extension environment and tested against an array mocked based on my own set of apps. With those mocked values I tested which scores make more sense and whether they should stack between weak assertions, etc. Why did I use AI? Creating extensions on GNOME is not hard since everything is JS, but finding the right documentation and the right types — that's the real challenge.
+If the question is "Did you use AI?" the answer is yes. But if the question is "Did AI write all the code?" the answer is no. I wrote my own code, the entire heuristic algorithm was created outside a GNOME extension environment and tested against an array mocked based on my own set of apps. With those mocked values I tested which scores make more sense and whether they should stack between weak assertions, etc. Why did I use AI? Creating extensions on GNOME is not hard since everything is JS, but finding the right documentation and the right types, that's the real challenge.
 
 ### Is it stable?
 
