@@ -117,9 +117,9 @@ export default class IconFixExtension {
       const dedupeKey = wmClass || appId;
       if (this._processed.has(dedupeKey)) return;
 
-      // console.log(
-      //   `[IconMatcher] ✗ "${title}" is untracked (wm_class="${wmClass}", app_id="${appId}")`,
-      // );
+      console.log(
+        `[IconMatcher] ✗ "${title}" is untracked (wm_class="${wmClass}", app_id="${appId}")`,
+      );
 
       const candidate = this._findBestCandidate(wmClass, appId, title);
       if (candidate) {
@@ -164,11 +164,9 @@ export default class IconFixExtension {
     }
 
     if (appId) {
-      for (const id of [`${appLower}.desktop`]) {
-        const app = appSystem.lookup_app(id);
-        if (app) {
-          return app;
-        }
+      const app = appSystem.lookup_app(`${appLower}.desktop`);
+      if (app) {
+        return app;
       }
     }
 
@@ -235,6 +233,16 @@ export default class IconFixExtension {
     return null;
   }
 
+  _isSteamXorgGame(app, wmClass) {
+    const steamMatch = wmClass.match(/^steam_app_(\d+)$/i);
+    if (!steamMatch) return false;
+
+    const gameId = steamMatch[1];
+    const info = Gio.DesktopAppInfo.new(app.get_id());
+    const exec = info?.get_string("Exec") ?? "";
+    return exec.includes(`steam://rungameid/${gameId}`);
+  }
+
   _scoreCandidate(app, wm, appId, title) {
     const desktopId = (app.get_id() ?? "")
       .toLowerCase()
@@ -255,6 +263,11 @@ export default class IconFixExtension {
       return 0;
 
     let score = 0;
+
+    // Its almost guaranteed
+    if (this._isSteamXorgGame(app, wm)) {
+      return 99;
+    }
 
     // Metadata match
     if (wm) {
