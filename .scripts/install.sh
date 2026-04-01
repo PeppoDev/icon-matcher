@@ -14,4 +14,4 @@ cp "$PROJECT_DIR/metadata.json" "$EXT_DIR/"
 echo "Files copied to $EXT_DIR"
 
 echo "To watch logs:"
-echo "  journalctl -f /usr/bin/gnome-shell | grep '\[IconMatcher\]'"
+echo "journalctl -f /usr/bin/gnome-shell | grep '\[IconMatcher\]'"
