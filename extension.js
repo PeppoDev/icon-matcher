@@ -7,7 +7,8 @@ import Meta from "gi://Meta";
 const USER_APP_DIR = `${GLib.get_home_dir()}/.local/share/applications`;
 const MATCHED_DIR = `${USER_APP_DIR}/icons-matched`;
 const MIN_MATCH_SCORE = 50;
-const WINDOW_INSPECT_DELAY_MS = 1000;
+const WINDOW_INSPECT_DELAY_MS = 5000;
+const BLACKLISTED_PREFIXES = ["org.gnome", "gnome-shell", "xdg", "org.mozilla", "teams-for-linux", "google-chrome"];
 
 export default class IconFixExtension {
   enable() {
@@ -139,10 +140,19 @@ export default class IconFixExtension {
     }
   }
 
+  // Some apps seems to be null even though they are eventually valid
+  // Seems to increase the dealy time works but its not a silver bullet
   _isValidApp(app) {
+
+    // Remove this
+    console.log("[IconMatcher] _isValidApp", app);
     if (!app) return false;
 
     const id = app.get_id();
+
+    // Remove this
+    console.log("[IconMatcher] _isValidApp", id);
+
     if (!id) return false;
     if (id.startsWith("window:")) return false;
 
@@ -210,6 +220,15 @@ export default class IconFixExtension {
     // console.log(
     //   `[IconMatcher] -> Finding best candidate for "${wmClass}" and "${title} and "${appId}""`,
     // );
+
+    for (const prefix of BLACKLISTED_PREFIXES) {
+      if (wmClass.toLowerCase().startsWith(prefix)) {
+        console.log(
+          `[IconMatcher] -> Skipping match for blacklisted prefix "${prefix}"`,
+        );
+        return null;
+      }
+    }
 
     const obviousMatch = this._deterministicMatch(
       appSystem,
