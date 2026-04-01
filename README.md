@@ -57,7 +57,7 @@ journalctl -f /usr/bin/gnome-shell | grep '\[IconMatcher\]'
 
 ## How does it work?
 
-This fixes your applications on demand whenever a new window is created without the right desktop entry associated to it. It uses extension privileges for searching apps, windows and their information. It tries to match by a desktop entry that the algorithm thinks is the "100% right one" and fixes the desktop file (kinda). What happens if it did not find the "100% right one"? Well, sometimes we don't need to be exactly right — close enough is okay. In other words, the algorithm will try to heuristically resolve your desktop entry by scoring all available ones based on some window metadata (title, wmclass and appid if available) and if something scores close enough, we match to it.
+This fixes your applications on demand whenever a new window is created without the right desktop entry associated to it. It uses extension privileges for searching apps, windows and their information. It tries to match by a desktop entry that the algorithm thinks is the "100% right one" and fixes the desktop file (kinda). What happens if it did not find the "100% right one"? Well, sometimes we don't need to be exactly right, close enough is okay. In other words, the algorithm will try to heuristically resolve your desktop entry by scoring all available ones based on some window metadata (title, wmclass and appid if available) and if something scores close enough, we match to it.
 
 
 ### Did it mess with your desktop entries?
@@ -71,7 +71,7 @@ I don't think so but it's hard to check how many resources have been spent on th
 
 ### Was it created by AI?
 
-If the question is "Did you use AI?" the answer is yes. But if the question is "Did AI write all the code?" the answer is no. I wrote my own code — the entire heuristic algorithm was created outside a GNOME extension environment and tested against an array mocked based on my own set of apps. With those mocked values I tested which scores make more sense and whether they should stack between weak assertions, etc. Why did I use AI? Creating extensions on GNOME is not hard since everything is JS, but finding the right documentation and the right types — that's the real challenge.
+If the question is "Did you use AI?" the answer is yes. But if the question is "Did AI write all the code?" the answer is no. I wrote my own code, the entire heuristic algorithm was created outside a GNOME extension environment and tested against an array mocked based on my own set of apps. With those mocked values I tested which scores make more sense and whether they should stack between weak assertions, etc. Why did I use AI? Creating extensions on GNOME is not hard since everything is JS, but finding the right documentation and the right types — that's the real challenge.
 
 ### Is it stable?
 
@@ -81,7 +81,7 @@ I tested it on my personal use case and a few other computers and everything loo
 ## Known Issues
 
 - It's not exactly an issue, but if the window does not have enough information it's simply unfixable without manual intervention. 
-- Sometimes it matches windows that already have a match, but it's harmless for now since it still matches correctly — even though it's unnecessary — and I am looking into it.
+- Sometimes it matches windows that already have a match, but it's harmless for now since it still matches correctly, even though it's unnecessary and I am looking into it.
 - For anything else, please report it.
 
 ## Future Improvements
