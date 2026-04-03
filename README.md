@@ -81,7 +81,7 @@ I tested it on my personal use case and a few other computers and everything loo
 ## Known Issues
 
 - It's not exactly an issue, but if the window does not have enough information it's simply unfixable without manual intervention. 
-- Sometimes it matches windows that already have a match, but it's harmless for now since it still matches correctly, even though it's unnecessary and I am looking into it.
+- Sometimes it matches windows that already have a match, but it's harmless for now since it still matches correctly, even though it's unnecessary and I am looking into it. It could bug your dock a little since the pinned app its not the same that are being used for the match. Seems to be a timing problem on Gnome side.
 - For anything else, please report it.
 
 ## Future Improvements
