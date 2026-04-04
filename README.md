@@ -75,7 +75,7 @@ If the question is "Did you use AI?" the answer is yes. But if the question is "
 
 ### Is it stable?
 
-I tested it on my personal use case and a few other computers and everything looks fine. There are no unmatched apps that should be matched and no matched apps that should not be matched. Although there are some unnecessary matches happening from time to time. It could also not work if the window does not have enough information to match or if some rule works unexpectedly on your use case. But even with bad behavior you can just delete the folder and reset what the extension did. I will also improve the rules and scoring as problems are reported.
+I tested it on my personal use case and a few other computers and everything looks fine. There are no unmatched apps that should be matched and (mostly) no matched apps that should not be matched. Although there are some unnecessary matches happening from time to time. It could also not work if the window does not have enough information to match or if some rule works unexpectedly on your use case. But even with bad behavior you can just delete the folder and reset what the extension did. I will also improve the rules and scoring as problems are reported.
 
 
 ## Known Issues
