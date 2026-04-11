@@ -19,7 +19,7 @@ const WINDOW_INSPECT_DELAY_MS = 1000;
 const WINDOW_CREATED = "window-created";
 const NOTIFY_TITLE = "notify::title";
 const MIN_STRING_LENGTH = 3;
-const DEBUG = true;
+const DEBUG = false;
 
 const BLACKLISTED = [
   "org.gnome*",
