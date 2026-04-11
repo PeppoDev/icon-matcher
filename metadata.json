@@ -2,6 +2,6 @@
   "name": "Icon Matcher",
   "description": "Fixes broken app icons in the dock and overview.",
   "uuid": "icon-matcher@peppodev",
-  "shell-version": ["46", "47", "48", "49"],
+  "shell-version": ["46", "47", "48", "49", "50"],
   "url": "https://github.com/PeppoDev/icon-matcher"
 }
