@@ -8,13 +8,20 @@ const USER_APP_DIR = `${GLib.get_home_dir()}/.local/share/applications`;
 const MATCHED_DIR = `${USER_APP_DIR}/icons-matched`;
 const MIN_MATCH_SCORE = 50;
 const WINDOW_INSPECT_DELAY_MS = 1000;
+const WINDOW_CREATED = "window-created";
+// default false to avoid log spam
+const DEBUG = false;
+
+// TODO: improve that shit
 const BLACKLISTED_PREFIXES = [
-  "org.gnome",
-  "gnome-shell",
-  "xdg",
-  "org.mozilla",
-  "teams-for-linux",
+  "org.gnome*",
+  "gnome-shell*",
+  "xdg*",
+  "org.mozilla*",
+  "teams-for-linux*",
   "google-chrome",
+  "zoom",
+  "steam",
 ];
 
 export default class IconFixExtension {
@@ -24,7 +31,7 @@ export default class IconFixExtension {
     this._timeoutSources = new Set();
 
     this._displayConnectionId = global.display.connect(
-      "window-created",
+      WINDOW_CREATED,
       (_display, win) => this._scheduleInspection(win),
     );
 
@@ -46,11 +53,22 @@ export default class IconFixExtension {
       try {
         win.disconnect(id);
       } catch (err) {
-        console.error("[IconMatcher] window disconnection failed", err);
+        this._logger.error("window disconnection failed", err);
       }
     }
     this._pendingConnections.clear();
     this._processed.clear();
+  }
+
+  _logger = {
+    log: (...data) => this._loggerBuilder("log", ...data),
+    error: (...data) => this._loggerBuilder("error", ...data),
+  };
+
+  _loggerBuilder(loglevel = "log", ...data) {
+    if (DEBUG) {
+      console[loglevel]("[IconMatcher]", ...data);
+    }
   }
 
   _inspectExistingWindows() {
@@ -119,8 +137,8 @@ export default class IconFixExtension {
       // It works because it represents an app that was developed with care
       // and probably it has the correct desktop file
       if (wmClass.toLowerCase() === appId.toLowerCase()) {
-        console.log(
-          "[IconMatcher] wm_class and app_id are the same, skipping to avoid potential mismatch",
+        this._logger.error(
+          "wm_class and app_id are the same, skipping to avoid potential mismatch",
           wmClass,
         );
         return;
@@ -130,25 +148,23 @@ export default class IconFixExtension {
       const dedupeKey = wmClass || appId;
       if (this._processed.has(dedupeKey)) return;
 
-      console.log(
-        `[IconMatcher] ✗ "${title}" is untracked (wm_class="${wmClass}", app_id="${appId}")`,
+      this._logger.log(
+        `✗ "${title}" is untracked (wm_class="${wmClass}", app_id="${appId}")`,
       );
 
       const candidate = this._findBestCandidate(wmClass, appId, title);
       if (candidate) {
-        console.log(
-          `[IconMatcher] 	✔ Best candidate: ${candidate.get_id()} — applying fix`,
+        this._logger.log(
+          `\t✔ Best candidate: ${candidate.get_id()} — applying fix`,
         );
         this._applyPersistentFix(wmClass, appId, candidate);
       } else {
-        console.log(
-          `[IconMatcher] -> No candidate found, cannot fix automatically`,
-        );
+        this._logger.log(`-> No candidate found, cannot fix automatically`);
       }
 
       this._processed.add(dedupeKey);
     } catch (err) {
-      console.error("[IconMatcher] _inspectWindow failed", err);
+      this._logger.error("_inspectWindow failed", err);
     }
   }
 
@@ -211,8 +227,8 @@ export default class IconFixExtension {
     }
 
     if (bestScore >= MIN_MATCH_SCORE) {
-      console.log(
-        `[IconMatcher]   heuristic match (score=${bestScore}): ${bestApp.get_id()}`,
+      this._logger.log(
+        `  heuristic match (score=${bestScore}): ${bestApp.get_id()}`,
       );
       return bestApp;
     }
@@ -227,8 +243,8 @@ export default class IconFixExtension {
 
     for (const prefix of BLACKLISTED_PREFIXES) {
       if (wmClass.toLowerCase().startsWith(prefix)) {
-        console.log(
-          `[IconMatcher] -> Skipping match for blacklisted prefix "${prefix}"`,
+        this._logger.log(
+          `-> Skipping match for blacklisted prefix "${prefix}"`,
         );
         return null;
       }
@@ -242,14 +258,14 @@ export default class IconFixExtension {
     );
 
     if (obviousMatch) {
-      console.log(`[IconMatcher] -> Found by deterministic method`);
+      this._logger.log(`-> Found by deterministic method`);
       return obviousMatch;
     }
 
     const bestMatch = this._heuristichMatch(appSystem, wmClass, appId, title);
 
     if (bestMatch) {
-      console.log(`[IconMatcher] -> Found by heuristic method`);
+      this._logger.log(`-> Found by heuristic method`);
       return bestMatch;
     }
 
@@ -345,9 +361,7 @@ export default class IconFixExtension {
     try {
       const info = Gio.DesktopAppInfo.new(app.get_id());
       if (!info) {
-        console.log(
-          "[IconMatcher] _applyPersistentFix: app has no AppInfo, skipping",
-        );
+        this._logger.log("_applyPersistentFix: app has no AppInfo, skipping");
         return;
       }
 
@@ -357,23 +371,23 @@ export default class IconFixExtension {
         .replace(/\.desktop$/, "")
         .toLowerCase();
       if (desktopId === appId.toLowerCase()) {
-        console.log(
-          `[IconMatcher] desktop name "${desktopId}" matches appid, no need for fixing.`,
+        this._logger.log(
+          `desktop name "${desktopId}" matches appid, no need for fixing.`,
         );
         return;
       }
 
       const existingWMClass = info.get_string("StartupWMClass");
       if (existingWMClass === wmClass) {
-        console.log(
-          `[IconMatcher] ${app.get_id()} already has StartupWMClass=${wmClass}`,
+        this._logger.log(
+          `${app.get_id()} already has StartupWMClass=${wmClass}`,
         );
         return;
       }
       const icon = info.get_icon();
 
       if (!icon) {
-        console.log(`[IconMatcher] ${app.get_id()} does not have any icon`);
+        this._logger.log(`${app.get_id()} does not have any icon`);
         return;
       }
 
@@ -381,7 +395,7 @@ export default class IconFixExtension {
 
       const fixFile = Gio.File.new_for_path(fixPath);
       if (fixFile.query_exists(null)) {
-        console.log(`[IconMatcher] Fix already on disk: ${fixPath}`);
+        this._logger.log(`Fix already on disk: ${fixPath}`);
         return;
       }
 
@@ -393,7 +407,7 @@ export default class IconFixExtension {
       this._writeFixedDesktopFile(info, wmClass, fixPath);
       this._updateDesktopDatabase();
     } catch (err) {
-      console.error("[IconMatcher] _applyPersistentFix failed", err);
+      this._logger.error("_applyPersistentFix failed", err);
     }
   }
 
@@ -401,7 +415,7 @@ export default class IconFixExtension {
     const sourceFile = Gio.File.new_for_path(info.get_filename());
     const [ok, rawBytes] = sourceFile.load_contents(null);
     if (!ok) {
-      console.log("[IconMatcher] Could not read source .desktop file");
+      this._logger.log("Could not read source .desktop file");
       return;
     }
 
@@ -445,7 +459,7 @@ export default class IconFixExtension {
     dos.put_string(finalContent, null);
     dos.close(null);
 
-    console.log(`[IconMatcher]   Wrote fix: ${outputPath}`);
+    this._logger.log(`  Wrote fix: ${outputPath}`);
   }
 
   _updateDesktopDatabase() {
@@ -457,15 +471,10 @@ export default class IconFixExtension {
 
       proc.wait_async(null, (_proc, result) => {
         _proc.wait_finish(result);
-        console.log(
-          "[IconMatcher]   update-desktop-database completed — fix is active",
-        );
+        this._logger.log("  update-desktop-database completed — fix is active");
       });
     } catch (err) {
-      console.error(
-        "[IconMatcher] Could not launch update-desktop-database",
-        err,
-      );
+      this._logger.error("Could not launch update-desktop-database", err);
     }
   }
 }
