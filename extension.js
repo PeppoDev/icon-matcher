@@ -3,12 +3,21 @@ import Gio from "gi://Gio";
 import Shell from "gi://Shell";
 import Meta from "gi://Meta";
 
+Gio._promisify(Gio.File.prototype, "load_contents_async");
+Gio._promisify(
+  Gio.File.prototype,
+  "replace_contents_bytes_async",
+  "replace_contents_finish",
+);
+Gio._promisify(Gio.File.prototype, "query_info_async");
+
 // Constants
 const USER_APP_DIR = `${GLib.get_home_dir()}/.local/share/applications`;
 const MATCHED_DIR = `${USER_APP_DIR}/icons-matched`;
 const MIN_MATCH_SCORE = 50;
 const WINDOW_INSPECT_DELAY_MS = 1000;
 const WINDOW_CREATED = "window-created";
+const NOTIFY_TITLE = "notify::title";
 const MIN_STRING_LENGTH = 3;
 const DEBUG = true;
 
@@ -66,7 +75,7 @@ export default class IconFixExtension {
 
   _loggerBuilder(loglevel, ...data) {
     if (DEBUG) {
-      console[loglevel]("[IconMatcher]", ...data);
+      console[loglevel]("[IconMatcher] ", ...data);
     }
   }
 
@@ -108,7 +117,7 @@ export default class IconFixExtension {
       // TODO: Improve it with a retry system
       if (!title) {
         if (!this._pendingConnections.has(win)) {
-          const id = win.connect("notify::title", () => {
+          const id = win.connect(NOTIFY_TITLE, () => {
             win.disconnect(id);
             this._pendingConnections.delete(win);
             this._inspectWindow(win);
@@ -156,7 +165,9 @@ export default class IconFixExtension {
         this._logger.log(
           `\t✔ Best candidate: ${candidate.get_id()} — applying fix`,
         );
-        this._applyPersistentFix(wmClass, appId, candidate);
+        this._applyPersistentFix(wmClass, appId, candidate).catch((err) =>
+          this._logger.error("_applyPersistentFix failed", err),
+        );
       } else {
         this._logger.log(`-> No candidate found, cannot fix automatically`);
       }
@@ -227,7 +238,7 @@ export default class IconFixExtension {
 
     if (bestScore >= MIN_MATCH_SCORE) {
       this._logger.log(
-        `  heuristic match (score=${bestScore}): ${bestApp.get_id()}`,
+        `heuristic match (score=${bestScore}): ${bestApp.get_id()}`,
       );
       return bestApp;
     }
@@ -254,6 +265,7 @@ export default class IconFixExtension {
       this._logger.log(`-> Skipping blacklisted pattern "${pattern}"`);
       return null;
     }
+
     const obviousMatch = this._deterministicMatch(
       appSystem,
       wmClass,
@@ -362,68 +374,76 @@ export default class IconFixExtension {
     return str.toLowerCase().replace(/[^a-z0-9]/g, "");
   }
 
-  _applyPersistentFix(wmClass, appId, app) {
+  async _applyPersistentFix(wmClass, appId, app) {
     // TODO: Make it work overriding the original .desktop file
+    const info = Gio.DesktopAppInfo.new(app.get_id());
+    if (!info) {
+      this._logger.log("_applyPersistentFix: app has no AppInfo, skipping");
+      return;
+    }
+
+    // Some guards to avoid mistake, need to improve the isValidApp method
+    const desktopId = app
+      .get_id()
+      .replace(/\.desktop$/, "")
+      .toLowerCase();
+    if (desktopId === appId.toLowerCase()) {
+      this._logger.log(
+        `desktop name "${desktopId}" matches appid, no need for fixing.`,
+      );
+      return;
+    }
+
+    const existingWMClass = info.get_string("StartupWMClass");
+    if (existingWMClass === wmClass) {
+      this._logger.log(`${app.get_id()} already has StartupWMClass=${wmClass}`);
+      return;
+    }
+    const icon = info.get_icon();
+    if (!icon) {
+      this._logger.log(`${app.get_id()} does not have any icon`);
+      return;
+    }
+
+    const fixPath = `${MATCHED_DIR}/${wmClass}.desktop`;
+
+    const fixFile = Gio.File.new_for_path(fixPath);
+
+    const alreadyFixed = await this._fileExists(fixFile);
+
+    if (alreadyFixed) {
+      this._logger.log(`Fix already on disk: ${fixPath}`);
+      return;
+    }
+
+    const matchedDir = Gio.File.new_for_path(MATCHED_DIR);
+    const matchedDirExists = await this._fileExists(matchedDir);
+
+    if (!matchedDirExists) {
+      matchedDir.make_directory_with_parents(null);
+    }
+
+    await this._writeFixedDesktopFile(info, wmClass, fixPath);
+    this._updateDesktopDatabase();
+  }
+
+  async _fileExists(file) {
     try {
-      const info = Gio.DesktopAppInfo.new(app.get_id());
-      if (!info) {
-        this._logger.log("_applyPersistentFix: app has no AppInfo, skipping");
-        return;
-      }
-
-      // Some guards to avoid mistake, need to improve the isValidApp method
-      const desktopId = app
-        .get_id()
-        .replace(/\.desktop$/, "")
-        .toLowerCase();
-      if (desktopId === appId.toLowerCase()) {
-        this._logger.log(
-          `desktop name "${desktopId}" matches appid, no need for fixing.`,
-        );
-        return;
-      }
-
-      const existingWMClass = info.get_string("StartupWMClass");
-      if (existingWMClass === wmClass) {
-        this._logger.log(
-          `${app.get_id()} already has StartupWMClass=${wmClass}`,
-        );
-        return;
-      }
-      const icon = info.get_icon();
-
-      if (!icon) {
-        this._logger.log(`${app.get_id()} does not have any icon`);
-        return;
-      }
-
-      const fixPath = `${MATCHED_DIR}/${wmClass}.desktop`;
-
-      const fixFile = Gio.File.new_for_path(fixPath);
-      if (fixFile.query_exists(null)) {
-        this._logger.log(`Fix already on disk: ${fixPath}`);
-        return;
-      }
-
-      const matchedDir = Gio.File.new_for_path(MATCHED_DIR);
-      if (!matchedDir.query_exists(null)) {
-        matchedDir.make_directory_with_parents(null);
-      }
-
-      this._writeFixedDesktopFile(info, wmClass, fixPath);
-      this._updateDesktopDatabase();
-    } catch (err) {
-      this._logger.error("_applyPersistentFix failed", err);
+      await file.query_info_async(
+        "standard::type",
+        Gio.FileQueryInfoFlags.NONE,
+        GLib.PRIORITY_DEFAULT,
+        null,
+      );
+      return true;
+    } catch {
+      return false;
     }
   }
 
-  _writeFixedDesktopFile(info, wmClass, outputPath) {
+  async _writeFixedDesktopFile(info, wmClass, outputPath) {
     const sourceFile = Gio.File.new_for_path(info.get_filename());
-    const [ok, rawBytes] = sourceFile.load_contents(null);
-    if (!ok) {
-      this._logger.log("Could not read source .desktop file");
-      return;
-    }
+    const [rawBytes] = await sourceFile.load_contents_async(null);
 
     let content = new TextDecoder("utf-8").decode(rawBytes);
 
@@ -460,10 +480,13 @@ export default class IconFixExtension {
     const finalContent = header + content;
 
     const outFile = Gio.File.new_for_path(outputPath);
-    const stream = outFile.replace(null, false, Gio.FileCreateFlags.NONE, null);
-    const dos = Gio.DataOutputStream.new(stream);
-    dos.put_string(finalContent, null);
-    dos.close(null);
+    await outFile.replace_contents_bytes_async(
+      new GLib.Bytes(finalContent),
+      null,
+      false,
+      Gio.FileCreateFlags.REPLACE_DESTINATION,
+      null,
+    );
 
     this._logger.log(`  Wrote fix: ${outputPath}`);
   }
