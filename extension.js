@@ -9,11 +9,10 @@ const MATCHED_DIR = `${USER_APP_DIR}/icons-matched`;
 const MIN_MATCH_SCORE = 50;
 const WINDOW_INSPECT_DELAY_MS = 1000;
 const WINDOW_CREATED = "window-created";
-// default false to avoid log spam
-const DEBUG = false;
+const MIN_STRING_LENGTH = 3;
+const DEBUG = true;
 
-// TODO: improve that shit
-const BLACKLISTED_PREFIXES = [
+const BLACKLISTED = [
   "org.gnome*",
   "gnome-shell*",
   "xdg*",
@@ -65,7 +64,7 @@ export default class IconFixExtension {
     error: (...data) => this._loggerBuilder("error", ...data),
   };
 
-  _loggerBuilder(loglevel = "log", ...data) {
+  _loggerBuilder(loglevel, ...data) {
     if (DEBUG) {
       console[loglevel]("[IconMatcher]", ...data);
     }
@@ -234,22 +233,27 @@ export default class IconFixExtension {
     }
   }
 
+  _isBlackListed(wmClass) {
+    const wmLower = wmClass.toLowerCase();
+
+    if (!wmLower || wmLower.length < MIN_STRING_LENGTH) return false;
+
+    for (const pattern of BLACKLISTED) {
+      const isPrefix = pattern.endsWith("*");
+      const term = isPrefix ? pattern.slice(0, -1) : pattern;
+      const matched = isPrefix ? wmLower.startsWith(term) : wmLower === term;
+      return matched;
+    }
+  }
+
   _findBestCandidate(wmClass = "", appId = "", title = "") {
     const appSystem = Shell.AppSystem.get_default();
 
-    // console.log(
-    //   `[IconMatcher] -> Finding best candidate for "${wmClass}" and "${title} and "${appId}""`,
-    // );
-
-    for (const prefix of BLACKLISTED_PREFIXES) {
-      if (wmClass.toLowerCase().startsWith(prefix)) {
-        this._logger.log(
-          `-> Skipping match for blacklisted prefix "${prefix}"`,
-        );
-        return null;
-      }
+    const isBlackListed = this._isBlackListed(wmClass);
+    if (isBlackListed) {
+      this._logger.log(`-> Skipping blacklisted pattern "${pattern}"`);
+      return null;
     }
-
     const obviousMatch = this._deterministicMatch(
       appSystem,
       wmClass,
@@ -311,23 +315,25 @@ export default class IconFixExtension {
     // Metadata match
     if (wm) {
       if (desktopId === wm) score = Math.max(score, 93);
-      if (desktopId.includes(wm) && wm.length > 3) score = Math.max(score, 80);
-      if (wm.includes(desktopId) && desktopId.length > 3)
+      if (desktopId.includes(wm) && wm.length > MIN_STRING_LENGTH)
+        score = Math.max(score, 80);
+      if (wm.includes(desktopId) && desktopId.length > MIN_STRING_LENGTH)
         score = Math.max(score, 70);
       if (
         shortDesktopId &&
         wm.includes(shortDesktopId) &&
-        shortDesktopId.length > 3
+        shortDesktopId.length > MIN_STRING_LENGTH
       )
         score = Math.max(score, 66);
       if (appName === wm) score = Math.max(score, 85);
-      if (appName.includes(wm) && wm.length > 3) score = Math.max(score, 60);
-      if (wm.includes(appName) && appName.length > 3)
+      if (appName.includes(wm) && wm.length > MIN_STRING_LENGTH)
+        score = Math.max(score, 60);
+      if (wm.includes(appName) && appName.length > MIN_STRING_LENGTH)
         score = Math.max(score, 55);
     }
 
     if (appId) {
-      if (desktopId.includes(appId) && appId.length > 3)
+      if (desktopId.includes(appId) && appId.length > MIN_STRING_LENGTH)
         score = Math.max(score, 75);
     }
 
@@ -338,7 +344,7 @@ export default class IconFixExtension {
     const appNameNormalized = this._normalize(appName);
     const shortIdNormalized = this._normalize(shortDesktopId);
 
-    if (titleNormalized && titleNormalized.length > 3) {
+    if (titleNormalized && titleNormalized.length > MIN_STRING_LENGTH) {
       if (titleNormalized === desktopNormalized) score = Math.max(score, 98);
       if (titleNormalized === appNameNormalized) score = Math.max(score, 95);
       if (titleNormalized === shortIdNormalized) score = Math.max(score, 94);
@@ -471,7 +477,7 @@ export default class IconFixExtension {
 
       proc.wait_async(null, (_proc, result) => {
         _proc.wait_finish(result);
-        this._logger.log("  update-desktop-database completed — fix is active");
+        this._logger.log("update-desktop-database completed — fix is active");
       });
     } catch (err) {
       this._logger.error("Could not launch update-desktop-database", err);
