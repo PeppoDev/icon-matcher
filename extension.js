@@ -253,8 +253,9 @@ export default class IconFixExtension {
       const isPrefix = pattern.endsWith("*");
       const term = isPrefix ? pattern.slice(0, -1) : pattern;
       const matched = isPrefix ? wmLower.startsWith(term) : wmLower === term;
-      return matched;
+      if (matched) return true;
     }
+    return false;
   }
 
   _findBestCandidate(wmClass = "", appId = "", title = "") {
@@ -262,7 +263,7 @@ export default class IconFixExtension {
 
     const isBlackListed = this._isBlackListed(wmClass);
     if (isBlackListed) {
-      this._logger.log(`-> Skipping blacklisted pattern "${pattern}"`);
+      this._logger.log(`-> Skipping blacklisted wm_class "${wmClass}"`);
       return null;
     }
 
