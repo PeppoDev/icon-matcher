@@ -244,11 +244,11 @@ export default class IconFixExtension {
       }
     }
 
-    if (bestScore >= MIN_MATCH_SCORE) {
+    if (bestMatch.score >= MIN_MATCH_SCORE) {
       this._logger.log(
-        `heuristic match (score=${bestScore}): ${bestApp.get_id()}`,
+        `heuristic match (score=${bestMatch.score}): ${bestMatch.app.get_id()}`,
       );
-      return bestApp;
+      return bestMatch.app;
     }
   }
 
@@ -308,8 +308,6 @@ export default class IconFixExtension {
   }
 
   _scoreCandidate(app, wm, appId, title) {
-    if (this._isBlackListed(wm)) return 0;
-
     const desktopId = (app.get_id() ?? "")
       .toLowerCase()
       .replace(/\.desktop$/, "");
