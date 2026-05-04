@@ -404,7 +404,7 @@ export default class IconFixExtension {
     }
 
     const existingWMClass = info.get_string("StartupWMClass");
-    if (existingWMClass === wmClass) {
+    if (existingWMClass) {
       this._logger.log(`${app.get_id()} already has StartupWMClass=${wmClass}`);
       return;
     }
