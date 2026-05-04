@@ -21,6 +21,11 @@ const NOTIFY_TITLE = "notify::title";
 const MIN_STRING_LENGTH = 3;
 const DEBUG = false;
 
+const FEATURE_TOGGLE = {
+  OVERRIDE_ORIGINAL_FILE: false,
+  SKIP_STARTUP_WM_CLASS: false,
+};
+
 const BLACKLISTED = [
   "org.gnome*",
   "gnome-shell*",
@@ -42,10 +47,6 @@ export default class IconFixExtension {
       WINDOW_CREATED,
       (_display, win) => this._scheduleInspection(win),
     );
-
-    // TODO: Create a toggle for this
-    // It is impacting on startup performance
-    // this._inspectExistingWindows();
   }
 
   disable() {
@@ -77,6 +78,10 @@ export default class IconFixExtension {
     if (DEBUG) {
       console[loglevel]("[IconMatcher] ", ...data);
     }
+  }
+
+  _isFeatureEnabled(feature) {
+    return !!FEATURE_TOGGLE[feature];
   }
 
   _inspectExistingWindows() {
@@ -221,8 +226,11 @@ export default class IconFixExtension {
   }
 
   _heuristichMatch(appSystem, wmClass, appId, title) {
-    let bestApp = null;
-    let bestScore = 0;
+    const bestMatch = {
+      app: null,
+      score: 0,
+    };
+
     const apps = appSystem.get_installed();
 
     for (const app of apps) {
@@ -230,9 +238,9 @@ export default class IconFixExtension {
       if (!info) continue;
 
       const score = this._scoreCandidate(app, wmClass, appId, title);
-      if (score > bestScore) {
-        bestScore = score;
-        bestApp = app;
+      if (score > bestMatch.score) {
+        bestMatch.score = score;
+        bestMatch.app = app;
       }
     }
 
@@ -300,6 +308,8 @@ export default class IconFixExtension {
   }
 
   _scoreCandidate(app, wm, appId, title) {
+    if (this._isBlackListed(wm)) return 0;
+
     const desktopId = (app.get_id() ?? "")
       .toLowerCase()
       .replace(/\.desktop$/, "");
