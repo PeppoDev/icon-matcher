@@ -80,6 +80,7 @@ I tested it on my personal use case and a few other computers and everything loo
 - It's not exactly an issue, but if the window does not have enough information it's simply unfixable without manual intervention. 
 - Sometimes it matches windows that already have a match, but it's (almost) harmless. It can bug pinned apps on dash.
 - For anything else, please report it.
+- If the original file already have a `StartUpWMClass`, the extension will skip the fix. For now it is a failsafe for situations where the file already have a fix (or do not need one) and the extension still thinks it needs. So I recommend to delete in all desktop entries that you write manually.
 
 ## Future Improvements
 
