@@ -10,13 +10,8 @@ import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 type Nullable<T> = T | null | undefined;
 type Candidate = {
   app: Nullable<Gio.AppInfo>;
+  matchType: Nullable<"deterministic" | "heuristic">;
   score: number;
-};
-
-type UpdateDesktopMetadata = {
-  wmClass: string;
-  score: number;
-  matchType: "deterministic" | "heuristic";
 };
 
 // promises
@@ -43,9 +38,6 @@ const BLACKLISTED = [
   "gnome-shell*",
   "xdg*",
   "org.mozilla*",
-  // "teams-for-linux*",
-  "google-chrome",
-  // "zoom",
   "steam",
 ];
 
@@ -78,7 +70,6 @@ export default class MyExtension extends Extension {
       this._displayConnectionId = null;
     }
 
-    // TODO: check if make sense
     for (const id of this._timeoutSources) GLib.Source.remove(id);
     this._timeoutSources.clear();
 
@@ -105,16 +96,12 @@ export default class MyExtension extends Extension {
   }
 
   _scheduleInspection(win: Meta.Window) {
-    this._logger.log("_scheduleInspection", win.title);
     const type = win.get_window_type();
 
-    if (!ALLOWED_WINDOW_TYPES.includes(type)) {
-      this._logger.log(`window type ${type} is not allowed, skipping`);
-      return;
-    }
+    if (!ALLOWED_WINDOW_TYPES.includes(type)) return;
 
     const id = GLib.timeout_add(
-      GLib.PRIORITY_DEFAULT_IDLE,
+      GLib.PRIORITY_DEFAULT,
       WINDOW_INSPECT_DELAY_MS,
       () => {
         this._timeoutSources.delete(id);
@@ -123,54 +110,34 @@ export default class MyExtension extends Extension {
       },
     );
 
-    this._logger.log(
-      `scheduled inspection for window ${win.title} with timeout id ${id}`,
-    );
     this._timeoutSources.add(id);
   }
 
   _inspectWindow(win: Meta.Window) {
     try {
-      this._logger.log("_inspectWindow", win.title);
+      this._logger.log("Inspecting window", win.title);
 
-      const wmClass = win.get_wm_class() ?? "";
-      const title = win.title ?? "";
-
-      this._logger.log(`window ${win.title} wmClass: ${wmClass} `);
-
-      // TODO: transform into a function
+      const wmClass = win.get_wm_class();
       if (!wmClass) {
-        if (!this._pendingConnections.has(win)) {
-          this._logger.log(
-            `window ${win.title} has no title yet, connecting to ${NOTIFY_WMCLASS} signal to retry later`,
-          );
-          const id = win.connect(NOTIFY_WMCLASS, () => {
-            win.disconnect(id);
-            this._pendingConnections.delete(win);
-            this._inspectWindow(win);
-          });
-          this._pendingConnections.set(win, id);
-        }
+        this._rescheduleWindow(win);
         return;
       }
 
       const shouldUpdateApp = this._shouldUpdateApp(win);
-
-      this._logger.log(`ShouldUpdateApp: ${shouldUpdateApp}`);
-
+      this._logger.log(`Should update app: ${shouldUpdateApp}`);
       if (!shouldUpdateApp) return;
 
       const appId = win.get_gtk_application_id() ?? "";
+      const title = win.title ?? "";
 
       if (this._processed.has(wmClass)) return;
 
       const candidate = this._findBestCandidate(wmClass, appId, title);
-
       if (candidate) {
         this._logger.log(
-          `\t✔ Best candidate: ${candidate.get_id()} — applying fix`,
+          `\t✔ Best candidate: ${candidate.app?.get_id()} — applying fix`,
         );
-        this._applyPersistentFix(wmClass, appId, candidate);
+        this._applyPersistentFix(wmClass, candidate);
       } else {
         this._logger.log(`-> No candidate found, cannot fix automatically`);
       }
@@ -183,65 +150,73 @@ export default class MyExtension extends Extension {
     }
   }
 
+  _rescheduleWindow(win: Meta.Window) {
+    if (!this._pendingConnections.has(win)) {
+      this._logger.log(
+        `window ${win.title} has no wmClass, connecting to ${NOTIFY_WMCLASS} signal to retry later`,
+      );
+      const id = win.connect(NOTIFY_WMCLASS, () => {
+        win.disconnect(id);
+        this._pendingConnections.delete(win);
+        this._inspectWindow(win);
+      });
+      this._pendingConnections.set(win, id);
+    }
+  }
+
   _shouldUpdateApp(win: Meta.Window): boolean {
     const wmClass = win.get_wm_class() ?? "";
-    const appId = win.get_gtk_application_id() ?? "";
-
-    // TODO: try to remove this
-    // if (wmClass.toLowerCase() === appId.toLowerCase()) {
-    //   this._logger.error(
-    //     "wm_class and app_id are the same, skipping to avoid potential mismatch",
-    //     wmClass,
-    //   );
-    //   return false;
-    // }
 
     const isBlackListed = this._isBlackListed(wmClass);
-    if (isBlackListed) {
-      this._logger.log(`window wm_class ${wmClass} is blacklisted, skipping`);
-      return false;
-    }
+    if (isBlackListed) return false;
 
     const tracker = Shell.WindowTracker.get_default();
     const currentApp = tracker.get_window_app(win);
 
-    this._logger.log(
-      `inspecting window title: ${win.title}, app: ${currentApp}`,
-    );
-
     if (!currentApp) return false;
 
     const icon = currentApp.get_icon()?.to_string();
-    // const id = currentApp.get_id();
 
+    // TODO: remove later
     this._logger.log(
       `APPINFO: ${currentApp?.appInfo}:${currentApp?.app_info}, ID: ${currentApp.id}, desc: ${currentApp?.get_description()} icon: ${icon}`,
     );
 
-    // if (!id || id.startsWith("window:")) {
-    //   this._logger.log(
-    //     `window ${win.title} has no valid app id (${id}), skipping`,
-    //   );
-    //   return false;
-    // }
     if (!icon || icon === FALLBACK_ICON) return true;
 
+    // TODO: remove later
     this._logger.log("fallback return");
     return false;
   }
 
-  // TODO: add suffix
   _isBlackListed(wmClass: string): boolean {
     const wmLower = wmClass.toLowerCase();
 
     if (!wmLower || wmLower.length < MIN_STRING_LENGTH) return false;
 
     for (const pattern of BLACKLISTED) {
-      const isPrefix = pattern.endsWith("*");
-      const term = isPrefix ? pattern.slice(0, -1) : pattern;
-      const matched = isPrefix ? wmLower.startsWith(term) : wmLower === term;
-      if (matched) return true;
+      const lowerPattern = pattern.toLowerCase();
+      const startsWithWildcard = lowerPattern.startsWith("*");
+      const endsWithWildcard = lowerPattern.endsWith("*");
+      const term = lowerPattern.replace(/^\*|\*$/g, "");
+      let matched = false;
+
+      if (startsWithWildcard && endsWithWildcard) {
+        matched = wmLower.includes(term);
+      } else if (startsWithWildcard) {
+        matched = wmLower.endsWith(term);
+      } else if (endsWithWildcard) {
+        matched = wmLower.startsWith(term);
+      } else {
+        matched = wmLower === term;
+      }
+
+      if (matched) {
+        this._logger.log(`window wm_class ${wmClass} is blacklisted, skipping`);
+        return true;
+      }
     }
+
     return false;
   }
 
@@ -249,10 +224,11 @@ export default class MyExtension extends Extension {
     wmClass: string,
     appId: string,
     title: string,
-  ): Nullable<Gio.AppInfo> {
+  ): Nullable<Candidate> {
     this._logger.log(
       `_findBestCandidate called with wmClass=${wmClass}, appId=${appId}, title=${title}`,
     );
+
     const appSystem = Shell.AppSystem.get_default();
 
     const deterministicMatch = this._deterministicMatcher(
@@ -287,32 +263,35 @@ export default class MyExtension extends Extension {
     wmClass: string,
     appId: string,
     title: string,
-  ): Nullable<Gio.AppInfo> {
+  ): Nullable<Candidate> {
     const wmLower = wmClass.toLowerCase().trim();
     const appLower = appId.toLowerCase().trim();
     const titleLower = title.toLowerCase().trim();
+
+    const match: Candidate = {
+      app: null,
+      score: 100,
+      matchType: "deterministic",
+    };
 
     if (title) {
       const result = this._lookUpByValues(appSystem, [
         `${title}.desktop`,
         `${titleLower}.desktop`,
       ]);
-      if (result) return result;
-    }
-
-    if (appId) {
+      if (result) match.app = result;
+    } else if (appId) {
       const result = this._lookUpByValues(appSystem, [`${appLower}.desktop`]);
-      if (result) return result;
-    }
-
-    if (wmClass) {
+      if (result) match.app = result;
+    } else if (wmClass) {
       const result = this._lookUpByValues(appSystem, [
         `${wmClass}.desktop`,
         `${wmLower}.desktop`,
       ]);
-      if (result) return result;
+      if (result) match.app = result;
     }
 
+    if (match.app) return match;
     return null;
   }
 
@@ -330,10 +309,11 @@ export default class MyExtension extends Extension {
     wmClass: string,
     appId: string,
     title: string,
-  ): Nullable<Gio.AppInfo> {
+  ): Nullable<Candidate> {
     const bestMatch: Candidate = {
       app: null,
       score: 0,
+      matchType: "heuristic",
     };
 
     const apps = appSystem.get_installed();
@@ -359,7 +339,7 @@ export default class MyExtension extends Extension {
       this._logger.log(
         `heuristic match (score=${bestMatch.score}): ${bestMatch.app.get_id()}`,
       );
-      return bestMatch.app;
+      return bestMatch;
     }
 
     return null;
@@ -461,7 +441,7 @@ export default class MyExtension extends Extension {
 
   async _shouldApplyFix(
     id: string,
-    app: Gio.AppInfo,
+    candidate: Candidate,
     wmClass: string,
     fixPath: string,
   ): Promise<boolean> {
@@ -478,7 +458,7 @@ export default class MyExtension extends Extension {
       return false;
     }
 
-    const icon = app.get_icon();
+    const icon = candidate.app?.get_icon();
     if (!icon) {
       this._logger.log(`${id} does not have any icon`);
       return false;
@@ -494,15 +474,14 @@ export default class MyExtension extends Extension {
     return true;
   }
 
-  // TODO: remove appid
-  async _applyPersistentFix(wmClass: string, appId: string, app: Gio.AppInfo) {
-    const id = app.get_id();
+  async _applyPersistentFix(wmClass: string, candidate: Candidate) {
+    const id = candidate.app?.get_id();
     if (!id) return;
 
     const fixPath = `${MATCHED_DIR}/${wmClass}.desktop`;
     const shouldApplyFix = await this._shouldApplyFix(
       id,
-      app,
+      candidate,
       wmClass,
       fixPath,
     );
@@ -518,7 +497,7 @@ export default class MyExtension extends Extension {
       matchedDir.make_directory_with_parents(null);
     }
 
-    await this._writeFixedDesktopFile(info, wmClass, fixPath);
+    await this._writeFixedDesktopFile(info, wmClass, fixPath, candidate);
     this._updateDesktopDatabase();
   }
 
@@ -540,7 +519,7 @@ export default class MyExtension extends Extension {
     info: GioUnix.DesktopAppInfo,
     wmClass: string,
     outputPath: string,
-    metadata?: UpdateDesktopMetadata,
+    candidate: Candidate,
   ) {
     const fileName = info.get_filename();
     if (!fileName) {
@@ -574,12 +553,11 @@ export default class MyExtension extends Extension {
       );
     }
 
-    // TODO: BRING SCORE HERE
     const header = [
       "# Auto-generated by the Icon Fix GNOME Shell extension.",
       `# Source: ${info.get_filename()}`,
-      `# Search type: ${"heuristic"}`,
-      `# Score (only for heuristic): ${10}`,
+      `# Search type: ${candidate.matchType}`,
+      `# Score (deterministic is always 100): ${candidate.score}`,
       `# Added StartupWMClass=${wmClass}`,
       `# Added NoDisplay=true`,
       "",
