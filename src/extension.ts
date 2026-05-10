@@ -18,11 +18,12 @@ Gio._promisify(Gio.File.prototype, "query_info_async");
 const USER_APP_DIR = `${GLib.get_home_dir()}/.local/share/applications`;
 const MATCHED_DIR = `${USER_APP_DIR}/icons-matched`;
 const MIN_MATCH_SCORE = 50;
-const WINDOW_INSPECT_DELAY_MS = 1000;
+const WINDOW_INSPECT_DELAY_MS = 1500;
 const WINDOW_CREATED = "window-created";
 const NOTIFY_WMCLASS = "notify::wm-class";
 const MIN_STRING_LENGTH = 3;
 const DEBUG = true;
+const FALLBACK_ICON = "application-x-executable";
 const BLACKLISTED = [
   "org.gnome*",
   "gnome-shell*",
@@ -104,7 +105,6 @@ export default class MyExtension extends Extension {
       () => {
         this._timeoutSources.delete(id);
         this._inspectWindow(win);
-        // TODO check this
         return GLib.SOURCE_REMOVE;
       },
     );
@@ -147,9 +147,7 @@ export default class MyExtension extends Extension {
       const appId = win.get_gtk_application_id() ?? "";
       const title = win.title ?? "";
 
-      // Avoid reprocessing
-      const dedupeKey = wmClass || appId;
-      if (this._processed.has(dedupeKey)) return;
+      if (this._processed.has(wmClass)) return;
 
       const candidate = this._findBestCandidate(wmClass, appId, title);
 
@@ -164,17 +162,8 @@ export default class MyExtension extends Extension {
     const wmClass = win.get_wm_class() ?? "";
     const appId = win.get_gtk_application_id() ?? "";
 
-    // Not enough info to proceed
-    // if (!wmClass) {
-    //   this._logger.error(
-    //     "window missing wm_class or app_id, skipping",
-    //     win.title,
-    //   );
-    //   return false;
-    // }
-
     // TODO: try to remove this
-    if (wmClass?.toLowerCase() === appId?.toLowerCase()) {
+    if (wmClass.toLowerCase() === appId.toLowerCase()) {
       this._logger.error(
         "wm_class and app_id are the same, skipping to avoid potential mismatch",
         wmClass,
@@ -201,7 +190,7 @@ export default class MyExtension extends Extension {
       `APPINFO: ${currentApp?.appInfo}:${currentApp?.app_info}, ID: ${currentApp?.get_id()}, desc: ${currentApp?.get_description()} icon: ${icon}`,
     );
 
-    if (!icon || icon === "application-x-executable") return true;
+    if (!icon || icon === FALLBACK_ICON) return true;
 
     return false;
   }
