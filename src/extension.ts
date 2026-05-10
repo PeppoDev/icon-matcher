@@ -3,7 +3,6 @@ import Gio from "gi://Gio";
 import GioUnix from "gi://GioUnix";
 import Meta from "gi://Meta";
 import Shell from "gi://Shell";
-import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 
 // types
@@ -30,16 +29,9 @@ const MIN_MATCH_SCORE = 50;
 const WINDOW_INSPECT_DELAY_MS = 1500;
 const WINDOW_CREATED = "window-created";
 const NOTIFY_WMCLASS = "notify::wm-class";
+const NOTIFY_SETTINGS_CHANGED = "changed";
 const MIN_STRING_LENGTH = 3;
-const DEBUG = true;
 const FALLBACK_ICON = "application-x-executable";
-const BLACKLISTED = [
-  "org.gnome*",
-  "gnome-shell*",
-  "xdg*",
-  "org.mozilla*",
-  "steam",
-];
 
 const ALLOWED_WINDOW_TYPES = [
   Meta.WindowType.NORMAL,
@@ -49,15 +41,26 @@ const ALLOWED_WINDOW_TYPES = [
 ];
 
 export default class MyExtension extends Extension {
-  gsettings?: Gio.Settings;
-  debugEnabled: boolean = DEBUG;
+  gsettings: Nullable<Gio.Settings> = null;
+  debug: boolean = false;
+  blackListed: string[] = [];
+
   _processed: Set<String> = new Set();
   _pendingConnections: Map<Meta.Window, number> = new Map();
   _timeoutSources: Set<number> = new Set();
   _displayConnectionId: Nullable<number> = null;
+  _settingsConnectionId: Nullable<number> = null;
 
   enable() {
-    this._logger.log("Enabling extension");
+    this.gsettings = this.getSettings();
+
+    this._settingsConnectionId = this.gsettings.connect(
+      NOTIFY_SETTINGS_CHANGED,
+      () => {
+        this._loadSettings();
+      },
+    );
+
     this._displayConnectionId = global.display.connect(
       WINDOW_CREATED,
       (_display, win) => this._scheduleInspection(win),
@@ -70,6 +73,11 @@ export default class MyExtension extends Extension {
       this._displayConnectionId = null;
     }
 
+    if (this._settingsConnectionId && this.gsettings) {
+      this.gsettings.disconnect(this._settingsConnectionId);
+      this._settingsConnectionId = null;
+    }
+
     for (const id of this._timeoutSources) GLib.Source.remove(id);
     this._timeoutSources.clear();
 
@@ -80,8 +88,17 @@ export default class MyExtension extends Extension {
         this._logger.error("window disconnection failed", err);
       }
     }
+
     this._pendingConnections.clear();
     this._processed.clear();
+    this.gsettings = null;
+    this.debug = false;
+    this.blackListed = [];
+  }
+
+  _loadSettings() {
+    this.debug = this.gsettings!.get_boolean("debug");
+    this.blackListed = this.gsettings!.get_strv("blacklisted-wm-classes");
   }
 
   _logger = {
@@ -90,7 +107,7 @@ export default class MyExtension extends Extension {
   };
 
   _loggerBuilder(loglevel: "log" | "error", ...data: any[]) {
-    if (DEBUG) {
+    if (this.debug) {
       console[loglevel]("[IconMatcher] ", ...data);
     }
   }
@@ -194,7 +211,7 @@ export default class MyExtension extends Extension {
 
     if (!wmLower || wmLower.length < MIN_STRING_LENGTH) return false;
 
-    for (const pattern of BLACKLISTED) {
+    for (const pattern of this.blackListed) {
       const lowerPattern = pattern.toLowerCase();
       const startsWithWildcard = lowerPattern.startsWith("*");
       const endsWithWildcard = lowerPattern.endsWith("*");
@@ -432,9 +449,6 @@ export default class MyExtension extends Extension {
     const gameId = steamMatch[1];
     const info = app.get_commandline();
 
-    this._logger.log(
-      `Checking if ${app.get_id()} is a steam game with command line: ${info}`,
-    );
     if (!info) return false;
     return info.includes(`steam://rungameid/${gameId}`);
   }

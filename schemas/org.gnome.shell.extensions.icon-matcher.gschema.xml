@@ -4,15 +4,38 @@
         id="org.gnome.shell.extensions.icon-matcher"
         path="/org/gnome/shell/extensions/icon-matcher/"
     >
-    <key name="padding-inner" type="i">
-      <default>8</default>
-      <summary>Inner padding</summary>
-      <description>Padding between windows</description>
+
+    <key name="debug" type="b">
+      <default>false</default>
+      <summary>Enable debug logs</summary>
+      <description>
+        Whether the extension should print debug information to the journal.
+      </description>
     </key>
-    <key name="animate" type="b">
-      <default>true</default>
-      <summary>Animation</summary>
-      <description>Whether to animate window movement/resizing</description>
+
+    <key name="blacklisted-wm-classes" type="as">
+      <default>
+        [
+          'org.gnome*',
+          'gnome-shell*',
+          'xdg*',
+          'org.mozilla*',
+          'steam'
+        ]
+      </default>
+
+      <summary>Blacklisted WM Classes</summary>
+
+      <description>
+        WM_CLASS values ignored by the extension.
+
+        Supported patterns:
+        - exact: example
+        - prefix: example*
+        - suffix: *example
+        - contains: *example*
+      </description>
     </key>
+
   </schema>
 </schemalist>
