@@ -1,5 +1,6 @@
 import GLib from "gi://GLib";
 import Gio from "gi://Gio";
+import GioUnix from "gi://GioUnix";
 import Meta from "gi://Meta";
 import Shell from "gi://Shell";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
@@ -10,6 +11,12 @@ type Nullable<T> = T | null | undefined;
 type Candidate = {
   app: Nullable<Gio.AppInfo>;
   score: number;
+};
+
+type UpdateDesktopMetadata = {
+  wmClass: string;
+  score: number;
+  matchType: "deterministic" | "heuristic";
 };
 
 // promises
@@ -452,125 +459,161 @@ export default class MyExtension extends Extension {
     return info.includes(`steam://rungameid/${gameId}`);
   }
 
-  // async _applyPersistentFix(wmClass: string, appId: string, app: Gio.AppInfo) {
-  //   const info = Gio.DesktopAppInfo.new(app.get_id());
-  //   if (!info) {
-  //     this._logger.log("_applyPersistentFix: app has no AppInfo, skipping");
-  //     return;
-  //   }
-  //   const existingWMClass = app.get_executable("StartupWMClass");
-  //   if (existingWMClass === wmClass) {
-  //     this._logger.log(`${app.get_id()} already has StartupWMClass=${wmClass}`);
-  //     return;
-  //   }
-  //   const icon = app.get_icon();
-  //   if (!icon) {
-  //     this._logger.log(`${app.get_id()} does not have any icon`);
-  //     return;
-  //   }
+  async _shouldApplyFix(
+    id: string,
+    app: Gio.AppInfo,
+    wmClass: string,
+    fixPath: string,
+  ): Promise<boolean> {
+    const info = GioUnix.DesktopAppInfo.new(id);
 
-  //   const fixPath = `${MATCHED_DIR}/${wmClass}.desktop`;
+    if (!info) {
+      this._logger.log("_applyPersistentFix: app has no AppInfo, skipping");
+      return false;
+    }
+    const existingWMClass = info.get_startup_wm_class();
 
-  //   const fixFile = Gio.File.new_for_path(fixPath);
+    if (existingWMClass === wmClass) {
+      this._logger.log(`${id} already has StartupWMClass=${wmClass}`);
+      return false;
+    }
 
-  //   const alreadyFixed = await this._fileExists(fixFile);
+    const icon = app.get_icon();
+    if (!icon) {
+      this._logger.log(`${id} does not have any icon`);
+      return false;
+    }
 
-  //   if (alreadyFixed) {
-  //     this._logger.log(`Fix already on disk: ${fixPath}`);
-  //     return;
-  //   }
+    const fixFile = Gio.File.new_for_path(fixPath);
+    const alreadyFixed = await this._fileExists(fixFile);
+    if (alreadyFixed) {
+      this._logger.log(`Fix already on disk: ${fixPath}`);
+      return false;
+    }
 
-  //   const matchedDir = Gio.File.new_for_path(MATCHED_DIR);
-  //   const matchedDirExists = await this._fileExists(matchedDir);
+    return true;
+  }
 
-  //   if (!matchedDirExists) {
-  //     matchedDir.make_directory_with_parents(null);
-  //   }
+  // TODO: remove appid
+  async _applyPersistentFix(wmClass: string, appId: string, app: Gio.AppInfo) {
+    const id = app.get_id();
+    if (!id) return;
 
-  //   await this._writeFixedDesktopFile(info, wmClass, fixPath);
-  //   this._updateDesktopDatabase();
-  // }
+    const fixPath = `${MATCHED_DIR}/${wmClass}.desktop`;
+    const shouldApplyFix = await this._shouldApplyFix(
+      id,
+      app,
+      wmClass,
+      fixPath,
+    );
 
-  // async _fileExists(file: Gio.File): Promise<boolean> {
-  //   try {
-  //     await file.query_info_async(
-  //       "standard::type",
-  //       Gio.FileQueryInfoFlags.NONE,
-  //       GLib.PRIORITY_DEFAULT,
-  //       null,
-  //     );
-  //     return true;
-  //   } catch {
-  //     return false;
-  //   }
-  // }
+    if (!shouldApplyFix) return;
 
-  // async _writeFixedDesktopFile(info, wmClass: string, outputPath: string) {
-  //   const sourceFile = Gio.File.new_for_path(info.get_filename());
-  //   const [rawBytes] = await sourceFile.load_contents_async(null);
+    const info = GioUnix.DesktopAppInfo.new(id);
 
-  //   let content = new TextDecoder("utf-8").decode(rawBytes);
+    const matchedDir = Gio.File.new_for_path(MATCHED_DIR);
+    const matchedDirExists = await this._fileExists(matchedDir);
 
-  //   if (/^StartupWMClass=/m.test(content)) {
-  //     content = content.replace(
-  //       /^StartupWMClass=.*$/m,
-  //       `StartupWMClass=${wmClass}`,
-  //     );
-  //   } else {
-  //     content = content.replace(
-  //       /^(\[Desktop Entry\]\s*\n)/m,
-  //       `$1StartupWMClass=${wmClass}\n`,
-  //     );
-  //   }
+    if (!matchedDirExists) {
+      matchedDir.make_directory_with_parents(null);
+    }
 
-  //   // Hide to avoid showing in the app grid or search results
-  //   if (/^NoDisplay=/m.test(content)) {
-  //     content = content.replace(/^NoDisplay=.*$/m, "NoDisplay=true");
-  //   } else {
-  //     content = content.replace(
-  //       /^(\[Desktop Entry\]\s*\n)/m,
-  //       `$1NoDisplay=true\n`,
-  //     );
-  //   }
+    await this._writeFixedDesktopFile(info, wmClass, fixPath);
+    this._updateDesktopDatabase();
+  }
 
-  //   // Just to make it obvious, remove it later
-  //   const header = [
-  //     "# Auto-generated by the Icon Fix GNOME Shell extension.",
-  //     `# Source: ${info.get_filename()}`,
-  //     `# Search type: ${info.get_filename()}`,
-  //     `# Score (only for heuristic): ${info.get_filename()}`,
-  //     `# Added StartupWMClass=${wmClass}`,
-  //     `# Added NoDisplay=true`,
-  //     "",
-  //   ].join("\n");
+  async _fileExists(file: Gio.File): Promise<boolean> {
+    try {
+      await file.query_info_async(
+        "standard::type",
+        Gio.FileQueryInfoFlags.NONE,
+        GLib.PRIORITY_DEFAULT,
+        null,
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
-  //   const finalContent = header + content;
+  async _writeFixedDesktopFile(
+    info: GioUnix.DesktopAppInfo,
+    wmClass: string,
+    outputPath: string,
+    metadata?: UpdateDesktopMetadata,
+  ) {
+    const fileName = info.get_filename();
+    if (!fileName) {
+      this._logger.error("Cannot get filename from AppInfo, aborting fix");
+      return;
+    }
 
-  //   const outFile = Gio.File.new_for_path(outputPath);
-  //   outFile.replace_contents_bytes_async(
-  //     new GLib.Bytes(finalContent),
-  //     null,
-  //     false,
-  //     Gio.FileCreateFlags.REPLACE_DESTINATION,
-  //     null,
-  //   );
+    const sourceFile = Gio.File.new_for_path(fileName);
+    const [rawBytes] = await sourceFile.load_contents_async(null);
 
-  //   this._logger.log(`  Wrote fix: ${outputPath}`);
-  // }
+    let content = new TextDecoder("utf-8").decode(rawBytes);
 
-  // _updateDesktopDatabase() {
-  //   try {
-  //     const proc = Gio.Subprocess.new(
-  //       ["update-desktop-database", USER_APP_DIR],
-  //       Gio.SubprocessFlags.NONE,
-  //     );
+    if (/^StartupWMClass=/m.test(content)) {
+      content = content.replace(
+        /^StartupWMClass=.*$/m,
+        `StartupWMClass=${wmClass}`,
+      );
+    } else {
+      content = content.replace(
+        /^(\[Desktop Entry\]\s*\n)/m,
+        `$1StartupWMClass=${wmClass}\n`,
+      );
+    }
 
-  //     proc.wait_async(null, (_proc, result) => {
-  //       _proc?.wait_finish(result);
-  //       this._logger.log("update-desktop-database completed — fix is active");
-  //     });
-  //   } catch (err) {
-  //     this._logger.error("Could not launch update-desktop-database", err);
-  //   }
-  // }
+    if (/^NoDisplay=/m.test(content)) {
+      content = content.replace(/^NoDisplay=.*$/m, "NoDisplay=true");
+    } else {
+      content = content.replace(
+        /^(\[Desktop Entry\]\s*\n)/m,
+        `$1NoDisplay=true\n`,
+      );
+    }
+
+    // TODO: BRING SCORE HERE
+    const header = [
+      "# Auto-generated by the Icon Fix GNOME Shell extension.",
+      `# Source: ${info.get_filename()}`,
+      `# Search type: ${"heuristic"}`,
+      `# Score (only for heuristic): ${10}`,
+      `# Added StartupWMClass=${wmClass}`,
+      `# Added NoDisplay=true`,
+      "",
+    ].join("\n");
+
+    const encoder = new TextEncoder();
+    const finalContent = encoder.encode(header + content);
+
+    const outFile = Gio.File.new_for_path(outputPath);
+    outFile.replace_contents_bytes_async(
+      new GLib.Bytes(finalContent),
+      null,
+      false,
+      Gio.FileCreateFlags.REPLACE_DESTINATION,
+      null,
+      null,
+    );
+
+    this._logger.log(`  Wrote fix: ${outputPath}`);
+  }
+
+  _updateDesktopDatabase() {
+    try {
+      const proc = Gio.Subprocess.new(
+        ["update-desktop-database", USER_APP_DIR],
+        Gio.SubprocessFlags.NONE,
+      );
+
+      proc.wait_async(null, (_proc, result) => {
+        _proc?.wait_finish(result);
+        this._logger.log("update-desktop-database completed — fix is active");
+      });
+    } catch (err) {
+      this._logger.error("Could not launch update-desktop-database", err);
+    }
+  }
 }
