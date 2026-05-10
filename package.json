@@ -12,7 +12,8 @@
   },
   "homepage": "https://github.com/PeppoDev/icon-matcher",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "make": "make clean && make install"
   },
   "devDependencies": {
     "typescript": "^6.0.3"
