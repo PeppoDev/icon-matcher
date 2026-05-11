@@ -160,8 +160,6 @@ export default class MyExtension extends Extension {
       }
 
       this._processed.add(wmClass);
-
-      this._logger.log(`window details: wmClass=${wmClass}, appId=${appId}`);
     } catch (err) {
       this._logger.error("_inspectWindow failed", err);
     }
@@ -194,15 +192,8 @@ export default class MyExtension extends Extension {
 
     const icon = currentApp.get_icon()?.to_string();
 
-    // TODO: remove later
-    this._logger.log(
-      `APPINFO: ${currentApp?.appInfo}:${currentApp?.app_info}, ID: ${currentApp.id}, desc: ${currentApp?.get_description()} icon: ${icon}`,
-    );
-
     if (!icon || icon === FALLBACK_ICON) return true;
 
-    // TODO: remove later
-    this._logger.log("fallback return");
     return false;
   }
 
@@ -242,10 +233,6 @@ export default class MyExtension extends Extension {
     appId: string,
     title: string,
   ): Nullable<Candidate> {
-    this._logger.log(
-      `_findBestCandidate called with wmClass=${wmClass}, appId=${appId}, title=${title}`,
-    );
-
     const appSystem = Shell.AppSystem.get_default();
 
     const deterministicMatch = this._deterministicMatcher(
@@ -474,7 +461,6 @@ export default class MyExtension extends Extension {
 
     const icon = candidate.app?.get_icon();
     if (!icon) {
-      this._logger.log(`${id} does not have any icon`);
       return false;
     }
 
@@ -488,6 +474,7 @@ export default class MyExtension extends Extension {
     return true;
   }
 
+  // TODO: Make it work overriding the original .desktop file with a toggle (opt-in)
   async _applyPersistentFix(wmClass: string, candidate: Candidate) {
     const id = candidate.app?.get_id();
     if (!id) return;
@@ -537,7 +524,6 @@ export default class MyExtension extends Extension {
   ) {
     const fileName = info.get_filename();
     if (!fileName) {
-      this._logger.error("Cannot get filename from AppInfo, aborting fix");
       return;
     }
 
