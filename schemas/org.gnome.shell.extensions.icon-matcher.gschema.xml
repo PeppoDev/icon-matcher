@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<schemalist>
+  <schema
+        id="org.gnome.shell.extensions.icon-matcher"
+        path="/org/gnome/shell/extensions/icon-matcher/"
+    >
+
+    <key name="debug" type="b">
+      <default>false</default>
+      <summary>Enable debug logs</summary>
+      <description>
+        Whether the extension should print debug information to the journal.
+      </description>
+    </key>
+
+    <key name="blacklisted-wm-classes" type="as">
+      <default>
+        [
+          'org.gnome*',
+          'gnome-shell*',
+          'xdg*',
+          'org.mozilla*',
+          'steam'
+        ]
+      </default>
+
+      <summary>Blacklisted WM Classes</summary>
+
+      <description>
+        WM_CLASS values ignored by the extension.
+
+        Supported patterns:
+        - exact: example
+        - prefix: example*
+        - suffix: *example
+        - contains: *example*
+      </description>
+    </key>
+
+  </schema>
+</schemalist>

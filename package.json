@@ -1,0 +1,25 @@
+{
+  "name": "icon-matcher",
+  "version": "1",
+  "description": "Fixes broken app icons in the dock and overview.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeppoDev/icon-matcher"
+  },
+  "bugs": {
+    "url": "https://github.com/PeppoDev/icon-matcher/issues"
+  },
+  "homepage": "https://github.com/PeppoDev/icon-matcher",
+  "scripts": {
+    "build": "tsc",
+    "make": "make clean && make install"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@girs/gjs": "^4.0.0-rc.15",
+    "@girs/gnome-shell": "^50.0.0"
+  }
+}

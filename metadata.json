@@ -3,5 +3,6 @@
   "description": "Fixes broken app icons in the dock and overview.",
   "uuid": "icon-matcher@peppodev",
   "shell-version": ["46", "47", "48", "49", "50"],
-  "url": "https://github.com/PeppoDev/icon-matcher"
+  "url": "https://github.com/PeppoDev/icon-matcher",
+  "settings-schema": "org.gnome.shell.extensions.icon-matcher"
 }
