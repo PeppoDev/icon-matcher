@@ -4,6 +4,17 @@ import GioUnix from "gi://GioUnix";
 import Meta from "gi://Meta";
 import Shell from "gi://Shell";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
+import {
+  FALLBACK_ICON,
+  MATCHED_DIR,
+  MIN_MATCH_SCORE,
+  MIN_STRING_LENGTH,
+  NOTIFY_SETTINGS_CHANGED,
+  NOTIFY_WMCLASS,
+  WINDOW_CREATED,
+  WINDOW_INSPECT_DELAY_MS,
+} from "./contants.js";
+import { updateDesktopDatabase } from "./utils.js";
 
 // types
 type Nullable<T> = T | null | undefined;
@@ -22,24 +33,6 @@ Gio._promisify(
 );
 Gio._promisify(Gio.File.prototype, "query_info_async");
 
-// Constants
-const USER_APP_DIR = `${GLib.get_home_dir()}/.local/share/applications`;
-const MATCHED_DIR = `${USER_APP_DIR}/icons-matched`;
-const MIN_MATCH_SCORE = 50;
-const WINDOW_INSPECT_DELAY_MS = 1500;
-const WINDOW_CREATED = "window-created";
-const NOTIFY_WMCLASS = "notify::wm-class";
-const NOTIFY_SETTINGS_CHANGED = "changed";
-const MIN_STRING_LENGTH = 3;
-const FALLBACK_ICON = "application-x-executable";
-
-const ALLOWED_WINDOW_TYPES = [
-  Meta.WindowType.NORMAL,
-  Meta.WindowType.DESKTOP,
-  Meta.WindowType.DIALOG,
-  Meta.WindowType.MODAL_DIALOG,
-];
-
 export default class MyExtension extends Extension {
   gsettings: Nullable<Gio.Settings> = null;
   debug: boolean = false;
@@ -53,6 +46,8 @@ export default class MyExtension extends Extension {
 
   enable() {
     this.gsettings = this.getSettings();
+    this.gsettings.delay();
+    this._loadSettings();
 
     this._settingsConnectionId = this.gsettings.connect(
       NOTIFY_SETTINGS_CHANGED,
@@ -106,7 +101,7 @@ export default class MyExtension extends Extension {
     error: (...data: any[]) => this._loggerBuilder("error", ...data),
   };
 
-  _loggerBuilder(loglevel: "log" | "error", ...data: any[]) {
+  _loggerBuilder(loglevel: "log" | "error" | "warn", ...data: any[]) {
     if (this.debug) {
       console[loglevel]("[IconMatcher] ", ...data);
     }
@@ -115,7 +110,14 @@ export default class MyExtension extends Extension {
   _scheduleInspection(win: Meta.Window) {
     const type = win.get_window_type();
 
-    if (!ALLOWED_WINDOW_TYPES.includes(type)) return;
+    const allowedWindowTypes = [
+      Meta.WindowType.NORMAL,
+      Meta.WindowType.DESKTOP,
+      Meta.WindowType.DIALOG,
+      Meta.WindowType.MODAL_DIALOG,
+    ];
+
+    if (!allowedWindowTypes.includes(type)) return;
 
     const id = GLib.timeout_add(
       GLib.PRIORITY_DEFAULT,
@@ -474,7 +476,6 @@ export default class MyExtension extends Extension {
     return true;
   }
 
-  // TODO: Make it work overriding the original .desktop file with a toggle (opt-in)
   async _applyPersistentFix(wmClass: string, candidate: Candidate) {
     const id = candidate.app?.get_id();
     if (!id) return;
@@ -499,7 +500,7 @@ export default class MyExtension extends Extension {
     }
 
     await this._writeFixedDesktopFile(info, wmClass, fixPath, candidate);
-    this._updateDesktopDatabase();
+    updateDesktopDatabase();
   }
 
   async _fileExists(file: Gio.File): Promise<boolean> {
@@ -577,21 +578,5 @@ export default class MyExtension extends Extension {
     );
 
     this._logger.log(`  Wrote fix: ${outputPath}`);
-  }
-
-  _updateDesktopDatabase() {
-    try {
-      const proc = Gio.Subprocess.new(
-        ["update-desktop-database", USER_APP_DIR],
-        Gio.SubprocessFlags.NONE,
-      );
-
-      proc.wait_async(null, (_proc, result) => {
-        _proc?.wait_finish(result);
-        this._logger.log("update-desktop-database completed — fix is active");
-      });
-    } catch (err) {
-      this._logger.error("Could not launch update-desktop-database", err);
-    }
   }
 }
