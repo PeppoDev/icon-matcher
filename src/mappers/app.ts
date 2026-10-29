@@ -1,6 +1,8 @@
+import type Gio from "gi://Gio";
+import GioUnix from "gi://GioUnix";
+import type { MappedApp } from "../types.js";
 import { normalize } from "../utils/normalize.js";
-import type { MappedApp } from "../matching/types.js";
-import { FALLBACK_ICON } from "../constants.js";
+import { FALLBACK_ICON, MATCHED_DIR } from "../constants.js";
 
 export interface RawAppInfo {
   id: string;
@@ -10,10 +12,7 @@ export interface RawAppInfo {
   filename: string;
 }
 
-export function createAppFacts(
-  raw: RawAppInfo,
-  generatedDir: string,
-): MappedApp {
+function toMappedApp(raw: RawAppInfo, generatedDir: string): MappedApp {
   const desktopId = raw.id.toLowerCase().replace(/\.desktop$/, "");
   // Just in case of dns-like desktopId
   const shortDesktopId = desktopId.split(".").pop() ?? "";
@@ -30,4 +29,20 @@ export function createAppFacts(
     shortIdNormalized: normalize(shortDesktopId),
     nameNormalized: normalize(nameLower),
   };
+}
+
+export function toMappedAppIndexer(info: Gio.AppInfo): MappedApp {
+  const filename =
+    info instanceof GioUnix.DesktopAppInfo ? (info.get_filename() ?? "") : "";
+
+  return toMappedApp(
+    {
+      id: info.get_id() ?? "",
+      name: info.get_name() ?? "",
+      commandline: info.get_commandline() ?? "",
+      icon: info.get_icon()?.to_string() ?? "",
+      filename,
+    },
+    MATCHED_DIR,
+  );
 }

@@ -27,8 +27,7 @@ export class Signals {
     this.#disconectionHandler({ target, id });
   }
 
-  /** Drops every connection made on `target` */
-  disconnectObject(target: GObject.Object) {
+  disconnectByTarget(target: GObject.Object) {
     const remaining: Connection[] = [];
     for (const connection of this.#connections) {
       if (connection.target === target) this.#disconectionHandler(connection);
