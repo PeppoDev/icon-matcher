@@ -1,5 +1,4 @@
 import GLib from "gi://GLib";
-import Meta from "gi://Meta";
 
 export const USER_APP_DIR = `${GLib.get_user_data_dir()}/applications`;
 export const MATCHED_DIR = `${USER_APP_DIR}/icons-matched`;
@@ -15,12 +14,6 @@ export const NOTIFY_TITLE = "notify::title";
 export const NOTIFY_SETTINGS_CHANGED = "changed";
 export const APPS_INSTALLED_CHANGED = "installed-changed";
 export const LOGGER_PREFIX = "[IconMatcher] ";
-export const ALLOWED_WINDOW_TYPES = [
-  Meta.WindowType.NORMAL,
-  Meta.WindowType.DESKTOP,
-  Meta.WindowType.DIALOG,
-  Meta.WindowType.MODAL_DIALOG,
-];
 export const DESKTOP_SUFFIX = ".desktop";
 export const MIN_MATCH_SCORE = 50;
 export const MIN_STRING_LENGTH = 3;

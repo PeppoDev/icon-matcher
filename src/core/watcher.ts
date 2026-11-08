@@ -9,8 +9,14 @@ import {
   WINDOW_CREATED,
   WINDOW_INSPECT_DELAY_MS,
   WINDOW_UNMANAGED,
-  ALLOWED_WINDOW_TYPES,
 } from "../constants.js";
+
+const ALLOWED_WINDOW_TYPES = [
+  Meta.WindowType.NORMAL,
+  Meta.WindowType.DESKTOP,
+  Meta.WindowType.DIALOG,
+  Meta.WindowType.MODAL_DIALOG,
+];
 import { logger } from "./logger.js";
 import { Signals } from "./signals.js";
 import { Fixer } from "./fixer.js";
