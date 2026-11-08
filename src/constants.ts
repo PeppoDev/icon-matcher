@@ -21,12 +21,13 @@ export const ALLOWED_WINDOW_TYPES = [
   Meta.WindowType.DIALOG,
   Meta.WindowType.MODAL_DIALOG,
 ];
-
+export const DESKTOP_SUFFIX = ".desktop";
 export const MIN_MATCH_SCORE = 50;
 export const MIN_STRING_LENGTH = 3;
 export const FALLBACK_ICON = "application-x-executable";
 export const DETERMINISTIC_SCORE = 100;
 export const STEAM_EXEC_SCORE = 99;
+export const MAX_NAME_LENGTH = 200;
 
 export const SettingsKey = {
   debug: "debug",

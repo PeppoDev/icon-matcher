@@ -1,6 +1,8 @@
+import type Gio from "gi://Gio";
+import type GioUnix from "gi://GioUnix";
+
 export type Callback = (...args: any[]) => unknown;
 
-// TODO transform into a true enum
 export type FixerOutcome = "done" | "wait-wm-class" | "retry-on-title";
 
 // TODO include PID for generated desktop entries
@@ -10,7 +12,7 @@ export interface MappedWindow {
   readonly title: string;
 }
 
-export interface HeurisctWindow {
+export interface HeuristicWindow {
   wm: string;
   appId: string;
   title: string;
@@ -45,24 +47,30 @@ export interface EntryMatch {
   readonly app: MappedApp;
   readonly matchType: MatchType;
   readonly score: number;
-  // Phase 2: the trust policy needs the margin over the runner-up
   readonly runnerUpScore: number;
-  // Trace
   readonly reason: string;
 }
 
 export interface ExistingEntryMatch extends EntryMatch {
-  // Phase 2: discriminant, launchers add a "synthesized" kind
+  // it will have more
   readonly kind: "existing";
 }
 
 export type MatchType = "deterministic" | "heuristic";
 
-// Phase 2: becomes ExistingEntryMatch | SynthesizedEntryMatch
 export type MatchResult = ExistingEntryMatch;
 
-// Phase 2: LauncherStrategy implements this
 export interface MatchStrategy {
   readonly name: MatchType;
   match(win: MappedWindow, catalog: AppCatalog): MatchResult | null;
+}
+
+export interface FixRequest {
+  wmClass: string;
+  appInfo: GioUnix.DesktopAppInfo;
+  match: ExistingEntryMatch;
+}
+
+export interface Writer {
+  apply(request: FixRequest): Promise<Gio.File | null>;
 }

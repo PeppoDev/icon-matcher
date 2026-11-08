@@ -2,8 +2,8 @@ import type Gio from "gi://Gio";
 
 import { NOTIFY_SETTINGS_CHANGED, SettingsKey } from "../constants.js";
 import { blackList } from "./blacklist.js";
-import { Signals } from "./signals.js";
 import { logger } from "./logger.js";
+import { Signals } from "./signals.js";
 
 export class ExtensionSettings {
   #signals = new Signals();

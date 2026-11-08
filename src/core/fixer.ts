@@ -1,27 +1,28 @@
 import type Gio from "gi://Gio";
-import Shell from "gi://Shell";
 import Meta from "gi://Meta";
+import Shell from "gi://Shell";
 
+import { FALLBACK_ICON } from "../constants.js";
+import { toMappedWindow } from "../mappers/window.js";
+import type { Matcher } from "../matching/matcher.js";
+import type { MatchResult } from "../types.js";
+import { FixerOutcome, Writer } from "../types.js";
+import { hasControlChars } from "../utils/normalize.js";
 import { AppIndexer } from "./appIndexer.js";
+import { blackList } from "./blacklist.js";
 import { fileExists } from "./io.js";
 import { logger } from "./logger.js";
-import type { EntryWriter } from "../entries/EntryWriter.js";
-import { blackList } from "./blacklist.js";
-import type { Matcher } from "../matching/matcher.js";
-import { hasControlChars } from "../utils/normalize.js";
-import type { MatchResult } from "../types.js";
-import { toMappedWindow } from "../mappers/window.js";
-import { FALLBACK_ICON } from "../constants.js";
-import { FixerOutcome } from "../types.js";
 
 export class Fixer {
   #fixed = new Map<string, Gio.File | null>();
   #indexer: AppIndexer;
+
+  // Guardrails for async operations
   #disposed = false;
 
   constructor(
     private readonly matcher: Matcher,
-    private readonly writer: EntryWriter,
+    private readonly writer: Writer,
   ) {
     this.#indexer = new AppIndexer(() => this.#onAppsChanged());
   }

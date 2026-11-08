@@ -1,24 +1,23 @@
-import { DeterministicStrategy } from "./strategies/deterministic.js";
-import { HeuristicStrategy } from "./strategies/heuristic.js";
 import type {
   AppCatalog,
+  MappedWindow,
   MatchResult,
   MatchStrategy,
-  MappedWindow,
 } from "../types.js";
+import { DeterministicStrategy } from "./strategies/deterministic.js";
+import { HeuristicStrategy } from "./strategies/heuristic.js";
 
 export class Matcher {
-  constructor(private readonly strategies: readonly MatchStrategy[]) {}
+  #strategies: MatchStrategy[] = [];
+  constructor() {
+    this.#strategies = [new DeterministicStrategy(), new HeuristicStrategy()];
+  }
 
   match(win: MappedWindow, catalog: AppCatalog): MatchResult | null {
-    for (const strategy of this.strategies) {
+    for (const strategy of this.#strategies) {
       const result = strategy.match(win, catalog);
       if (result) return result;
     }
     return null;
   }
-}
-
-export function createDefaultMatcher(): Matcher {
-  return new Matcher([new DeterministicStrategy(), new HeuristicStrategy()]);
 }

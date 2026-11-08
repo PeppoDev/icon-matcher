@@ -1,5 +1,5 @@
 import type Meta from "gi://Meta";
-import { MappedWindow, HeurisctWindow } from "../types.js";
+import { MappedWindow, HeuristicWindow } from "../types.js";
 import { steamGameIdFromWmClass } from "../utils/steam.js";
 import { normalize } from "../utils/normalize.js";
 
@@ -11,7 +11,7 @@ export function toMappedWindow(win: Meta.Window): MappedWindow {
   };
 }
 
-export function toHeuristicWindow(win: MappedWindow): HeurisctWindow {
+export function toHeuristicWindow(win: MappedWindow): HeuristicWindow {
   return {
     wm: win.wmClass.toLowerCase().trim(),
     appId: win.appId.toLowerCase().trim(),

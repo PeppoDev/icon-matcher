@@ -13,6 +13,7 @@
   "homepage": "https://github.com/PeppoDev/icon-matcher",
   "scripts": {
     "build": "tsc",
+    "test": "rm -rf build/test && tsc -p tsconfig.test.json && node --import ./tests/support/gi-stubs.mjs --test \"build/test/tests/**/*.test.js\"",
     "make": "make clean && make install"
   },
   "devDependencies": {

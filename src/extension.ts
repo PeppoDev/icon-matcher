@@ -1,12 +1,11 @@
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 
-import { ExtensionSettings } from "./core/settings.js";
-import { GeneratedEntryStore } from "./entries/GeneratedEntryStore.js";
-import { GhostEntryWriter } from "./entries/GhostEntryWriter.js";
 import { Fixer } from "./core/fixer.js";
-import { createDefaultMatcher } from "./matching/matcher.js";
+import { ExtensionSettings } from "./core/settings.js";
 import { Watcher } from "./core/watcher.js";
-import { AppIndexer } from "./core/appIndexer.js";
+import { GhostHandler } from "./entries/ghostHandler.js";
+import { GhostWriter } from "./entries/ghostWriter.js";
+import { Matcher } from "./matching/matcher.js";
 
 export default class IconMatcherExtension extends Extension {
   #settings: ExtensionSettings | null = null;
@@ -15,10 +14,7 @@ export default class IconMatcherExtension extends Extension {
 
   enable() {
     this.#settings = new ExtensionSettings(this.getSettings());
-    this.#fixer = new Fixer(
-      createDefaultMatcher(),
-      new GhostEntryWriter(new GeneratedEntryStore()),
-    );
+    this.#fixer = new Fixer(new Matcher(), new GhostWriter(new GhostHandler()));
     this.#watcher = new Watcher(this.#fixer);
     this.#watcher.enable();
   }

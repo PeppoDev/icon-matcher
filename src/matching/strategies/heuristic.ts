@@ -6,7 +6,7 @@ import {
 import { toHeuristicWindow } from "../../mappers/window.js";
 import type {
   AppCatalog,
-  HeurisctWindow,
+  HeuristicWindow,
   MappedApp,
   MappedWindow,
   MatchResult,
@@ -17,7 +17,7 @@ import { launchesSteamGame } from "../../utils/steam.js";
 interface ScoreRule {
   id: string;
   score: number;
-  applies(win: HeurisctWindow, app: MappedApp): boolean;
+  applies(win: HeuristicWindow, app: MappedApp): boolean;
 }
 
 export interface Score {
@@ -115,7 +115,7 @@ const TITLE_RULES: ScoreRule[] = [
 
 function bestRule(
   rules: ScoreRule[],
-  win: HeurisctWindow,
+  win: HeuristicWindow,
   app: MappedApp,
   current: Score,
 ) {
@@ -128,14 +128,14 @@ function bestRule(
 }
 
 // Prevent sub process ex: steam_app_1234 being matched to steam.desktop
-function isSubProcessOf(win: HeurisctWindow, app: MappedApp): boolean {
+function isSubProcessOf(win: HeuristicWindow, app: MappedApp): boolean {
   if (!win.wm) return false;
   return [app.desktopId, app.shortDesktopId].some(
     (id) => win.wm.startsWith(`${id}_`) || win.wm.startsWith(`${id}-`),
   );
 }
 
-export function scoreCandidate(win: HeurisctWindow, app: MappedApp): Score {
+export function scoreCandidate(win: HeuristicWindow, app: MappedApp): Score {
   if (win.steamGameId && launchesSteamGame(app.commandline, win.steamGameId))
     return { score: STEAM_EXEC_SCORE, rule: "steam exec" };
 
