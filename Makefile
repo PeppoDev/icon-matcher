@@ -7,8 +7,9 @@ all: $(NAME).zip
 node_modules/.package-lock.json: package.json
 	npm install
 
-dist/extension.js dist/prefs.js: node_modules/.package-lock.json src/*.ts
+dist/extension.js dist/prefs.js: node_modules/.package-lock.json $(shell find src -name '*.ts')
 	npm run build
+	@rm -f dist/types.js
 
 $(NAME).zip: dist/extension.js dist/prefs.js
 	@cp -r schemas/ dist/
