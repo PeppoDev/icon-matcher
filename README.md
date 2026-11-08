@@ -40,6 +40,8 @@ Recommended only for developers.
 npm install && npm run make
 ```
 
+### Testing
+
 ```bash
 npm test
 ```
