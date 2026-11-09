@@ -98,4 +98,5 @@ I tested it on my personal use case and a few other computers and everything loo
 - ~~Support GNOME 51~~
 - Improve rules (if necessary).
 - Auto Fix for steam when there is no desktop entry
-- Override original file if the user wants.
+- Capability of override original file
+- Schedule Sync
