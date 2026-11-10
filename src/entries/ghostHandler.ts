@@ -10,6 +10,7 @@ import {
   loadKeyFile,
   readBytes,
   saveKeyFile,
+  updateDesktopDatabase,
 } from "../core/io.js";
 import { logger } from "../core/logger.js";
 import {
@@ -147,6 +148,7 @@ export class GhostHandler {
       }
     }
 
+    if (report.synced + report.deleted > 0) await updateDesktopDatabase();
     return report;
   }
 
@@ -186,6 +188,7 @@ export class GhostHandler {
       }
     }
 
+    if (deleted > 0) await updateDesktopDatabase();
     return deleted;
   }
 }

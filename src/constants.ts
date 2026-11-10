@@ -13,6 +13,7 @@ export const NOTIFY_WMCLASS = "notify::wm-class";
 export const NOTIFY_TITLE = "notify::title";
 export const NOTIFY_SETTINGS_CHANGED = "changed";
 export const APPS_INSTALLED_CHANGED = "installed-changed";
+export const DESKTOP_ENTRY_DIR_CHANGED = "changed";
 export const LOGGER_PREFIX = "[IconMatcher] ";
 export const DESKTOP_SUFFIX = ".desktop";
 export const MIN_MATCH_SCORE = 50;
