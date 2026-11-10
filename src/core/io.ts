@@ -1,6 +1,10 @@
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 
+import { USER_APP_DIR } from "../constants.js";
+import { logger } from "./logger.js";
+
+Gio._promisify(Gio.Subprocess.prototype, "wait_check_async");
 Gio._promisify(Gio.File.prototype, "load_contents_async");
 Gio._promisify(Gio.File.prototype, "query_info_async");
 Gio._promisify(Gio.File.prototype, "make_directory_async");
@@ -109,6 +113,20 @@ export async function listChildren(dir: Gio.File): Promise<Gio.File[]> {
     await enumerator.close_async(GLib.PRIORITY_DEFAULT, null);
   }
   return children;
+}
+
+export async function updateDesktopDatabase(
+  dir: string = USER_APP_DIR,
+): Promise<void> {
+  try {
+    const proc = Gio.Subprocess.new(
+      ["update-desktop-database", dir],
+      Gio.SubprocessFlags.NONE,
+    );
+    await proc.wait_check_async(null);
+  } catch (err) {
+    logger.warn("update-desktop-database failed", err);
+  }
 }
 
 export async function deleteFile(file: Gio.File): Promise<void> {

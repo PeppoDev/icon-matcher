@@ -1,5 +1,6 @@
 import type Gio from "gi://Gio";
 
+import { updateDesktopDatabase } from "../core/io.js";
 import { logger } from "../core/logger.js";
 import type { FixRequest, Writer } from "../types.js";
 import type { GhostHandler } from "./ghostHandler.js";
@@ -41,6 +42,7 @@ export class GhostWriter implements Writer {
       matchType: match.matchType,
       score: match.score,
     });
+    await updateDesktopDatabase();
     logger.debug(`Wrote fix: ${target.get_path()}`);
     return target;
   }
