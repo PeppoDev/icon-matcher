@@ -10,6 +10,9 @@ import {
   WINDOW_INSPECT_DELAY_MS,
   WINDOW_UNMANAGED,
 } from "../constants.js";
+import { FixerOutcome, Nullable } from "../types.js";
+import { Fixer } from "./fixer.js";
+import { logger } from "./logger.js";
 
 const ALLOWED_WINDOW_TYPES = [
   Meta.WindowType.NORMAL,
@@ -17,37 +20,33 @@ const ALLOWED_WINDOW_TYPES = [
   Meta.WindowType.DIALOG,
   Meta.WindowType.MODAL_DIALOG,
 ];
-import { logger } from "./logger.js";
-import { Signals } from "./signals.js";
-import { Fixer } from "./fixer.js";
-import { FixerOutcome } from "../types.js";
 
 // - done: stop watching the window
 // - wait-wm-class: inspect again as soon as the window gets a wm class
 // - retry-on-title: nothing matched, inspect again if the title changes
 
 interface TrackedWindow {
-  timeoutId: number | null;
-  waitSignalId: number | null;
+  timeoutId: Nullable<number>;
   titleRetries: number;
 }
 
 // TODO check if title match resolve some of hard matches
 export class Watcher {
   #tracked = new Map<Meta.Window, TrackedWindow>();
-  #signals = new Signals();
 
   constructor(private readonly fixer: Fixer) {}
 
   enable() {
-    this.#signals.connect(global.display, WINDOW_CREATED, (_display, win) =>
-      this.#onWindowCreated(win),
+    global.display.connectObject(
+      WINDOW_CREATED,
+      (_display: Meta.Display, win: Meta.Window) => this.#onWindowCreated(win),
+      this,
     );
   }
 
   disable() {
     for (const win of [...this.#tracked.keys()]) this.#untrack(win);
-    this.#signals.disconnectAll();
+    global.display.disconnectObject(this);
   }
 
   #onWindowCreated(win: Meta.Window) {
@@ -55,11 +54,10 @@ export class Watcher {
 
     const tracked: TrackedWindow = {
       timeoutId: null,
-      waitSignalId: null,
       titleRetries: 0,
     };
     this.#tracked.set(win, tracked);
-    this.#signals.connect(win, WINDOW_UNMANAGED, () => this.#untrack(win));
+    win.connectObject(WINDOW_UNMANAGED, () => this.#untrack(win), this);
     this.#schedule(win, tracked, WINDOW_INSPECT_DELAY_MS, false);
   }
 
@@ -117,10 +115,14 @@ export class Watcher {
     signal: string,
     callback: () => void,
   ) {
-    tracked.waitSignalId = this.#signals.connect(win, signal, () => {
-      this.#clearWait(win, tracked);
-      callback();
-    });
+    win.connectObject(
+      signal,
+      () => {
+        this.#clearWait(win, tracked);
+        callback();
+      },
+      tracked,
+    );
   }
 
   #untrack(win: Meta.Window) {
@@ -128,14 +130,13 @@ export class Watcher {
     if (!tracked) return;
 
     this.#clearTimeout(tracked);
-    this.#signals.disconnectByTarget(win);
+    this.#clearWait(win, tracked);
+    win.disconnectObject(this);
     this.#tracked.delete(win);
   }
 
   #clearWait(win: Meta.Window, tracked: TrackedWindow) {
-    if (tracked.waitSignalId === null) return;
-    this.#signals.disconnect(win, tracked.waitSignalId);
-    tracked.waitSignalId = null;
+    win.disconnectObject(tracked);
   }
 
   #clearTimeout(tracked: TrackedWindow) {

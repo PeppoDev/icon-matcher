@@ -7,33 +7,32 @@ import {
   DESKTOP_ENTRY_DIR_CHANGED,
 } from "../constants.js";
 import { toMappedAppIndexer } from "../mappers/app.js";
-import type { AppCatalog, MappedApp } from "../types.js";
-import { Signals } from "./signals.js";
+import type { AppCatalog, Callback, MappedApp, Nullable } from "../types.js";
 
 export class AppIndexer implements AppCatalog {
   #appSystem = Shell.AppSystem.get_default();
   #appMonitor = Gio.AppInfoMonitor.get();
-  #signals = new Signals();
-  #apps: MappedApp[] | null = null;
+  #apps: Nullable<MappedApp[]> = null;
   #byId = new Map<string, MappedApp>();
 
-  constructor(onChanged: () => void) {
+  constructor(onChanged: Callback) {
+    this.#init(onChanged);
+  }
+
+  #init(onChanged: Callback) {
     const callBack = () => {
-      this.invalidate();
+      this.#invalidate();
       onChanged();
     };
-    this.#signals.connect(this.#appSystem, APPS_INSTALLED_CHANGED, callBack);
+
+    this.#appSystem.connectObject(APPS_INSTALLED_CHANGED, callBack, this);
 
     // For app images or other types of installation that does not trigger the other signal
     // Maybe I can leave just this signal
-    this.#signals.connect(
-      this.#appMonitor,
-      DESKTOP_ENTRY_DIR_CHANGED,
-      callBack,
-    );
+    this.#appMonitor.connectObject(DESKTOP_ENTRY_DIR_CHANGED, callBack, this);
   }
 
-  invalidate() {
+  #invalidate() {
     this.#apps = null;
     this.#byId.clear();
   }
@@ -46,7 +45,7 @@ export class AppIndexer implements AppCatalog {
     return this.#apps;
   }
 
-  lookup(desktopId: string): MappedApp | null {
+  lookup(desktopId: string): Nullable<MappedApp> {
     this.all();
     const known = this.#byId.get(desktopId);
     if (known) return known;
@@ -55,7 +54,7 @@ export class AppIndexer implements AppCatalog {
     return info ? toMappedAppIndexer(info) : null;
   }
 
-  desktopAppInfo(desktopId: string): GioUnix.DesktopAppInfo | null {
+  desktopAppInfo(desktopId: string): Nullable<GioUnix.DesktopAppInfo> {
     return (
       this.#appSystem.lookup_app(desktopId)?.get_app_info() ??
       GioUnix.DesktopAppInfo.new(desktopId)
@@ -63,7 +62,8 @@ export class AppIndexer implements AppCatalog {
   }
 
   dispose() {
-    this.#signals.disconnectAll();
-    this.invalidate();
+    this.#appMonitor.disconnectObject(this);
+    this.#appSystem.disconnectObject(this);
+    this.#invalidate();
   }
 }

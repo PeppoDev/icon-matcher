@@ -1,5 +1,7 @@
+import type { Nullable } from "../types.js";
+
 /** Game id of a X11 Proton window (`steam_app_<id>`), null otherwise */
-export function steamGameIdFromWmClass(wmClass: string): string | null {
+export function steamGameIdFromWmClass(wmClass: string): Nullable<string> {
   const STEAM_APP_WM_CLASS = /^steam_app_(\d+)$/i;
   return wmClass.match(STEAM_APP_WM_CLASS)?.[1] ?? null;
 }

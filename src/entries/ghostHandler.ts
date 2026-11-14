@@ -21,6 +21,7 @@ import {
   type EntryMetadata,
 } from "../utils/metadata.js";
 import { generatedFileName } from "../utils/naming.js";
+import type { Nullable } from "../types.js";
 
 const STRIPPED_KEYS = ["MimeType", "DBusActivatable"];
 const STARTUP_WM_CLASS_KEY = "StartupWMClass";
@@ -40,7 +41,7 @@ export class GhostHandler {
     this.dir = Gio.File.new_for_path(dirPath);
   }
 
-  #getString(keyFile: GLib.KeyFile, key: string): string | null {
+  #getString(keyFile: GLib.KeyFile, key: string): Nullable<string> {
     try {
       return keyFile.get_string(DESKTOP_GROUP, key);
     } catch {
@@ -90,7 +91,7 @@ export class GhostHandler {
     );
   }
 
-  async #readMetadata(file: Gio.File): Promise<EntryMetadata | null> {
+  async #readMetadata(file: Gio.File): Promise<Nullable<EntryMetadata>> {
     const bytes = await readBytes(file);
     const keyFile = new GLib.KeyFile();
     keyFile.load_from_bytes(bytes, GLib.KeyFileFlags.NONE);

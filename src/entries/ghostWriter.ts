@@ -2,7 +2,7 @@ import type Gio from "gi://Gio";
 
 import { updateDesktopDatabase } from "../core/io.js";
 import { logger } from "../core/logger.js";
-import type { FixRequest, Writer } from "../types.js";
+import type { FixRequest, Writer, Nullable } from "../types.js";
 import type { GhostHandler } from "./ghostHandler.js";
 
 export class GhostWriter implements Writer {
@@ -12,7 +12,7 @@ export class GhostWriter implements Writer {
     wmClass,
     appInfo,
     match,
-  }: FixRequest): Promise<Gio.File | null> {
+  }: FixRequest): Promise<Nullable<Gio.File>> {
     const id = appInfo.get_id();
 
     if (appInfo.get_startup_wm_class() === wmClass) {

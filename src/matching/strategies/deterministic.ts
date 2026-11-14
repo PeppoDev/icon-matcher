@@ -4,6 +4,7 @@ import {
   MappedWindow,
   MatchResult,
   MatchStrategy,
+  Nullable,
 } from "../../types.js";
 
 export function deterministicLookups(win: MappedWindow): [string, string[]][] {
@@ -32,7 +33,7 @@ export function deterministicLookups(win: MappedWindow): [string, string[]][] {
 export class DeterministicStrategy implements MatchStrategy {
   readonly name = "deterministic" as const;
 
-  match(win: MappedWindow, catalog: AppCatalog): MatchResult | null {
+  match(win: MappedWindow, catalog: AppCatalog): Nullable<MatchResult> {
     for (const [source, ids] of deterministicLookups(win)) {
       for (const id of ids) {
         const app = catalog.lookup(id);

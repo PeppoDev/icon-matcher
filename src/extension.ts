@@ -6,11 +6,12 @@ import { Watcher } from "./core/watcher.js";
 import { GhostHandler } from "./entries/ghostHandler.js";
 import { GhostWriter } from "./entries/ghostWriter.js";
 import { Matcher } from "./matching/matcher.js";
+import type { Nullable } from "./types.js";
 
 export default class IconMatcherExtension extends Extension {
-  #settings: ExtensionSettings | null = null;
-  #fixer: Fixer | null = null;
-  #watcher: Watcher | null = null;
+  #settings: Nullable<ExtensionSettings> = null;
+  #fixer: Nullable<Fixer> = null;
+  #watcher: Nullable<Watcher> = null;
 
   enable() {
     this.#settings = new ExtensionSettings(this.getSettings());

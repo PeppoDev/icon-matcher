@@ -11,6 +11,7 @@ import type {
   MappedWindow,
   MatchResult,
   MatchStrategy,
+  Nullable,
 } from "../../types.js";
 import { launchesSteamGame } from "../../utils/steam.js";
 
@@ -151,9 +152,9 @@ export function scoreCandidate(win: HeuristicWindow, app: MappedApp): Score {
 export class HeuristicStrategy implements MatchStrategy {
   readonly name = "heuristic" as const;
 
-  match(win: MappedWindow, catalog: AppCatalog): MatchResult | null {
+  match(win: MappedWindow, catalog: AppCatalog): Nullable<MatchResult> {
     const prepared = toHeuristicWindow(win);
-    let best: { app: MappedApp; score: Score } | null = null;
+    let best: Nullable<{ app: MappedApp; score: Score }> = null;
     let runnerUpScore = 0;
 
     for (const app of catalog.all()) {

@@ -1,7 +1,8 @@
 import { LOGGER_PREFIX } from "../constants.js";
+import type { Nullable } from "../types.js";
 
 export class Logger {
-  static #instance: Logger | null = null;
+  static #instance: Nullable<Logger> = null;
 
   #debugEnabled = false;
 

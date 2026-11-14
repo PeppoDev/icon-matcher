@@ -16,7 +16,7 @@ export interface HeuristicWindow {
   wm: string;
   appId: string;
   title: string;
-  steamGameId: string | null;
+  steamGameId: Nullable<string>;
 }
 
 export interface MappedApp {
@@ -38,7 +38,7 @@ export interface MappedApp {
 
 export interface AppCatalog {
   all(): readonly MappedApp[];
-  lookup(desktopId: string): MappedApp | null;
+  lookup(desktopId: string): Nullable<MappedApp>;
 }
 
 export type EntryMatchType = "existing";
@@ -62,7 +62,7 @@ export type MatchResult = ExistingEntryMatch;
 
 export interface MatchStrategy {
   readonly name: MatchType;
-  match(win: MappedWindow, catalog: AppCatalog): MatchResult | null;
+  match(win: MappedWindow, catalog: AppCatalog): Nullable<MatchResult>;
 }
 
 export interface FixRequest {
@@ -72,5 +72,7 @@ export interface FixRequest {
 }
 
 export interface Writer {
-  apply(request: FixRequest): Promise<Gio.File | null>;
+  apply(request: FixRequest): Promise<Nullable<Gio.File>>;
 }
+
+export type Nullable<T> = T | null;
