@@ -97,6 +97,7 @@ I tested it on my personal use case and a few other computers and everything loo
 - ~~Major refactor~~
 - ~~Support GNOME 51~~
 - Improve rules (if necessary).
-- Auto Fix for steam when there is no desktop entry
-- Capability of override original file
-- ~~Auto Sync~~
+- Auto Fix for exe files (next feature)
+- Capability of override original file  (low priority) 
+- ~~Auto Sync~~ 
+- Add sync configurable debounced time (low priority)
