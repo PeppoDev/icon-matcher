@@ -99,4 +99,4 @@ I tested it on my personal use case and a few other computers and everything loo
 - Improve rules (if necessary).
 - Auto Fix for steam when there is no desktop entry
 - Capability of override original file
-- Schedule Sync
+- ~~Auto Sync~~
