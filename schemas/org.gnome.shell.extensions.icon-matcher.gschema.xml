@@ -38,7 +38,7 @@
     </key>
 
     <key name="auto-sync" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Sync generated files automatically</summary>
       <description>
           Sync 5 minutes (not configurable for now) after desktop entries change (debounced), when the original icon or name changed (same mechanism as sync button).
