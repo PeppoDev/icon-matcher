@@ -2,7 +2,7 @@ import type Gio from "gi://Gio";
 
 import { updateDesktopDatabase } from "../core/io.js";
 import { logger } from "../core/logger.js";
-import type { FixRequest, Writer, Nullable } from "../types.js";
+import type { FixRequest, Nullable, Writer } from "../types.js";
 import type { GhostHandler } from "./ghostHandler.js";
 
 export class GhostWriter implements Writer {

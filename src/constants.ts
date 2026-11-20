@@ -6,6 +6,7 @@ export const MATCHED_DIR = `${USER_APP_DIR}/icons-matched`;
 export const WINDOW_INSPECT_DELAY_MS = 1500;
 export const TITLE_RETRY_DELAY_MS = 500;
 export const MAX_TITLE_RETRIES = 3;
+export const AUTO_SYNC_DELAY_SECONDS = 5 * 60;
 
 export const WINDOW_CREATED = "window-created";
 export const WINDOW_UNMANAGED = "unmanaged";
@@ -26,4 +27,5 @@ export const MAX_NAME_LENGTH = 200;
 export const SettingsKey = {
   debug: "debug",
   blacklist: "blacklisted-wm-classes",
+  autoSync: "auto-sync",
 } as const;
