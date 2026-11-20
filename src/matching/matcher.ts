@@ -3,6 +3,7 @@ import type {
   MappedWindow,
   MatchResult,
   MatchStrategy,
+  Nullable,
 } from "../types.js";
 import { DeterministicStrategy } from "./strategies/deterministic.js";
 import { HeuristicStrategy } from "./strategies/heuristic.js";
@@ -13,7 +14,7 @@ export class Matcher {
     this.#strategies = [new DeterministicStrategy(), new HeuristicStrategy()];
   }
 
-  match(win: MappedWindow, catalog: AppCatalog): MatchResult | null {
+  match(win: MappedWindow, catalog: AppCatalog): Nullable<MatchResult> {
     for (const strategy of this.#strategies) {
       const result = strategy.match(win, catalog);
       if (result) return result;

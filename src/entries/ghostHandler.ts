@@ -13,6 +13,7 @@ import {
   updateDesktopDatabase,
 } from "../core/io.js";
 import { logger } from "../core/logger.js";
+import type { Nullable } from "../types.js";
 import {
   DESKTOP_GROUP,
   headerComment,
@@ -25,6 +26,8 @@ import { generatedFileName } from "../utils/naming.js";
 const STRIPPED_KEYS = ["MimeType", "DBusActivatable"];
 const STARTUP_WM_CLASS_KEY = "StartupWMClass";
 const NO_DISPLAY_KEY = "NoDisplay";
+const ICON_KEY = "Icon";
+const NAME_KEY = "Name";
 
 export interface SyncReport {
   synced: number;
@@ -40,7 +43,7 @@ export class GhostHandler {
     this.dir = Gio.File.new_for_path(dirPath);
   }
 
-  #getString(keyFile: GLib.KeyFile, key: string): string | null {
+  #getString(keyFile: GLib.KeyFile, key: string): Nullable<string> {
     try {
       return keyFile.get_string(DESKTOP_GROUP, key);
     } catch {
@@ -49,11 +52,8 @@ export class GhostHandler {
   }
 
   #removeKey(keyFile: GLib.KeyFile, key: string) {
-    try {
-      keyFile.remove_key(DESKTOP_GROUP, key);
-    } catch {
-      logger.debug("Key not present");
-    }
+    const [keys] = keyFile.get_keys(DESKTOP_GROUP);
+    if (keys.includes(key)) keyFile.remove_key(DESKTOP_GROUP, key);
   }
 
   #applyGhostPatch(keyFile: GLib.KeyFile, meta: EntryMetadata) {
@@ -78,6 +78,10 @@ export class GhostHandler {
 
   async write(target: Gio.File, meta: EntryMetadata): Promise<void> {
     const keyFile = await loadKeyFile(Gio.File.new_for_path(meta.source));
+    await this.#save(target, keyFile, meta);
+  }
+
+  async #save(target: Gio.File, keyFile: GLib.KeyFile, meta: EntryMetadata) {
     this.#applyGhostPatch(keyFile, meta);
     await ensureDir(this.dir);
     await saveKeyFile(target, keyFile);
@@ -90,7 +94,7 @@ export class GhostHandler {
     );
   }
 
-  async #readMetadata(file: Gio.File): Promise<EntryMetadata | null> {
+  async #readMetadata(file: Gio.File): Promise<Nullable<EntryMetadata>> {
     const bytes = await readBytes(file);
     const keyFile = new GLib.KeyFile();
     keyFile.load_from_bytes(bytes, GLib.KeyFileFlags.NONE);
@@ -133,13 +137,33 @@ export class GhostHandler {
 
         meta.source = await this.#resolveSource(meta.source);
         if (!(await fileExists(Gio.File.new_for_path(meta.source)))) {
-          logger.warn(`Source missing, removing ghost: ${file.get_path()}`);
+          logger.warn(
+            `Source not available, removing ghost: ${file.get_path()}`,
+          );
           await deleteFile(file);
           report.deleted++;
           continue;
         }
 
-        await this.write(file, meta);
+        const source = await loadKeyFile(Gio.File.new_for_path(meta.source));
+        const ghost = await loadKeyFile(file);
+
+        const hasChangedIcon =
+          this.#getString(source, ICON_KEY) !==
+          this.#getString(ghost, ICON_KEY);
+
+        const hasChangedName =
+          this.#getString(source, NAME_KEY) !==
+          this.#getString(ghost, NAME_KEY);
+
+        const isLegacy = this.#getString(ghost, MetaKey.kind) === null;
+
+        const hasChanged = hasChangedIcon || hasChangedName || isLegacy;
+        if (!hasChanged) {
+          report.skipped++;
+          continue;
+        }
+        await this.#save(file, source, meta);
         logger.debug(`Synced ${file.get_path()}`);
         report.synced++;
       } catch (err) {
@@ -148,7 +172,9 @@ export class GhostHandler {
       }
     }
 
-    if (report.synced + report.deleted > 0) await updateDesktopDatabase();
+    const hasAnyChange = report.synced + report.deleted > 0;
+
+    if (hasAnyChange) await updateDesktopDatabase();
     return report;
   }
 

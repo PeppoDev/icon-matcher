@@ -24,7 +24,7 @@ export default class IconMatcherPreferences extends ExtensionPreferences {
 
     page.add(this.#debugGroup(settings));
     page.add(this.#blacklistGroup(settings));
-    page.add(this.#actionsGroup(window));
+    page.add(this.#actionsGroup(settings, window));
 
     window.add(page);
     return Promise.resolve();
@@ -85,11 +85,28 @@ export default class IconMatcherPreferences extends ExtensionPreferences {
     return group;
   }
 
-  #actionsGroup(window: Adw.PreferencesWindow): Adw.PreferencesGroup {
+  #actionsGroup(
+    settings: Gio.Settings,
+    window: Adw.PreferencesWindow,
+  ): Adw.PreferencesGroup {
     const group = new Adw.PreferencesGroup({
       title: _("Actions"),
       description: _("Perform actions on auto generated files."),
     });
+
+    const autoSync = new Adw.SwitchRow({
+      title: _("Auto-sync"),
+      subtitle: _(
+        "Sync 5 minutes (not configurable for now) after desktop entries change (debounced), when the original icon or name changed (same mechanism as sync button).",
+      ),
+    });
+    settings.bind(
+      SettingsKey.autoSync,
+      autoSync,
+      "active",
+      Gio.SettingsBindFlags.DEFAULT,
+    );
+    group.add(autoSync);
 
     const syncRow = new Adw.ActionRow({
       title: _("Sync information"),
@@ -126,20 +143,15 @@ export default class IconMatcherPreferences extends ExtensionPreferences {
   }
 
   async #sync(window: Adw.PreferencesWindow) {
-    try {
-      const { synced, skipped, failed, deleted } = await this.#store.sync();
-      this.#toast(
-        window,
-        _("Synced %d, deleted %d, skipped %d, failed %d")
-          .replace("%d", `${synced}`)
-          .replace("%d", `${deleted}`)
-          .replace("%d", `${skipped}`)
-          .replace("%d", `${failed}`),
-      );
-    } catch (err) {
-      logger.error("Sync failed", err);
-      this.#toast(window, _("Sync failed, check the logs"));
-    }
+    const { synced, skipped, failed, deleted } = await this.#store.sync();
+    this.#toast(
+      window,
+      _("Synced %d, deleted %d, skipped %d, failed %d")
+        .replace("%d", `${synced}`)
+        .replace("%d", `${deleted}`)
+        .replace("%d", `${skipped}`)
+        .replace("%d", `${failed}`),
+    );
   }
 
   #confirmReset(window: Adw.PreferencesWindow) {

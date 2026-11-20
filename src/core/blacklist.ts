@@ -1,3 +1,5 @@
+import type { Nullable } from "../types.js";
+
 type PatternKind = "exact" | "prefix" | "suffix" | "contains";
 
 interface Pattern {
@@ -6,7 +8,7 @@ interface Pattern {
 }
 
 class BlackList {
-  static #instance: BlackList | null = null;
+  static #instance: Nullable<BlackList> = null;
 
   #patterns: Pattern[] = [];
 

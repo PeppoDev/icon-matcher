@@ -133,7 +133,6 @@ export async function deleteFile(file: Gio.File): Promise<void> {
   await file.delete_async(GLib.PRIORITY_DEFAULT, null);
 }
 
-// TODO: study this, I do not uderstand why this or works for both
 const KEY_FILE_FLAGS =
   GLib.KeyFileFlags.KEEP_COMMENTS | GLib.KeyFileFlags.KEEP_TRANSLATIONS;
 

@@ -5,7 +5,7 @@ import Shell from "gi://Shell";
 import { FALLBACK_ICON } from "../constants.js";
 import { toMappedWindow } from "../mappers/window.js";
 import type { Matcher } from "../matching/matcher.js";
-import type { MatchResult } from "../types.js";
+import type { MatchResult, Nullable } from "../types.js";
 import { FixerOutcome, Writer } from "../types.js";
 import { hasControlChars } from "../utils/normalize.js";
 import { AppIndexer } from "./appIndexer.js";
@@ -14,7 +14,7 @@ import { fileExists } from "./io.js";
 import { logger } from "./logger.js";
 
 export class Fixer {
-  #fixed = new Map<string, Gio.File | null>();
+  #fixed = new Map<string, Nullable<Gio.File>>();
   #indexer: AppIndexer;
 
   // Guardrails for async operations
